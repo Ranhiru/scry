@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $# -lt 1 ]]; then
+  echo "Usage: tools/dsl_indexer/docs-search \"query text\" [--top-k N] [--repo REPO]"
+  exit 1
+fi
+python3 tools/dsl_indexer/index.py search --query "$1" "${@:2}"
+

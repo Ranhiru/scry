@@ -1,0 +1,5 @@
+repos/
+tools/dsl_indexer/data/
+tools/mcp_docs_server/.venv/
+__pycache__/
+*.pyc
