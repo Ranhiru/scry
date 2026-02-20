@@ -54,18 +54,19 @@ mkdir -p "$WORKSPACE_DIR/repos"
 for repo in "${REPOS[@]}"; do
   target="$WORKSPACE_DIR/repos/$repo"
   if [ -d "$target/.git" ]; then
-    # Repo exists — pull latest on the current branch
-    branch=$(git -C "$target" symbolic-ref --short HEAD 2>/dev/null || echo "")
-    if [ -z "$branch" ]; then
-      warn "$repo — detached HEAD, skipping pull"
-    elif [ -n "$(git -C "$target" status --porcelain 2>/dev/null)" ]; then
-      warn "$repo — uncommitted changes, skipping pull (on $branch)"
+    # Repo exists — force checkout default branch and pull latest
+    default_branch=$(git -C "$target" remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')
+    if [ -z "$default_branch" ]; then
+      default_branch="main"
+    fi
+    git -C "$target" checkout --force "$default_branch" 2>/dev/null
+    git -C "$target" clean -fd 2>/dev/null
+    if git -C "$target" pull --ff-only 2>/dev/null; then
+      ok "$repo (updated $default_branch)"
     else
-      if git -C "$target" pull --ff-only 2>/dev/null; then
-        ok "$repo (updated $branch)"
-      else
-        warn "$repo — fast-forward pull failed on $branch (resolve manually)"
-      fi
+      # ff-only failed — reset to origin
+      git -C "$target" reset --hard "origin/$default_branch" 2>/dev/null
+      ok "$repo (reset to origin/$default_branch)"
     fi
   else
     info "Cloning $repo ..."

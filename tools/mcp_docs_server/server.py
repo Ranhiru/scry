@@ -6,7 +6,7 @@ from typing import List, Optional
 from mcp.server.fastmcp import FastMCP
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from dsl_indexer.index import get_chunk, load_hits  # noqa: E402
+from dsl_indexer.index import get_chunk, load_hits, load_vector_hits  # noqa: E402
 from dsl_indexer.storage import read_meta  # noqa: E402
 from dsl_toolkit.spec_loader import load_spec  # noqa: E402
 from dsl_toolkit.xml_parser import parse_xmlspec_xml  # noqa: E402
@@ -29,7 +29,13 @@ def docs_search(query: str, top_k: int = 8, repo_filter: Optional[List[str]] = N
         repo_filter: Optional repo names to restrict results to
     """
     top_k = max(1, min(top_k, 50))
-    result = load_hits(query=query, top_k=top_k, repo_filter=repo_filter or [])
+    rf = repo_filter or []
+    result = load_vector_hits(query=query, top_k=top_k, repo_filter=rf)
+    if result.get("error"):
+        result = load_hits(query=query, top_k=top_k, repo_filter=rf)
+        result["search_mode"] = "keyword"
+    else:
+        result["search_mode"] = "vector"
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -47,7 +53,12 @@ def docs_get_chunk(chunk_id: str) -> str:
 @mcp.tool()
 def docs_status() -> str:
     """Get index metadata and readiness."""
-    result = read_meta()
+    result = dict(read_meta())
+    try:
+        from dsl_indexer.vector_index import vector_index_exists
+        result["vector_index_present"] = vector_index_exists()
+    except Exception:
+        result["vector_index_present"] = False
     return json.dumps(result, ensure_ascii=False)
 
 

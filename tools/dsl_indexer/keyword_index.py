@@ -1,8 +1,9 @@
+import sys
 from collections import Counter, defaultdict
 from typing import Dict, List
 import math
 
-from .text_utils import tokenize
+from .text_utils import tokenize, tokenize_path
 
 
 def build_keyword_index(chunks: List[Dict]) -> Dict:
@@ -10,16 +11,29 @@ def build_keyword_index(chunks: List[Dict]) -> Dict:
     doc_len = {}
     doc_meta = {}
     doc_freq = Counter()
+    total = len(chunks)
 
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks, 1):
         doc_id = chunk["chunk_id"]
         tokens = tokenize(chunk["content"])
         tf = Counter(tokens)
-        doc_len[doc_id] = len(tokens)
+
+        # Merge path tokens so file path terms are discoverable (+1 each)
+        path_tokens = tokenize_path(chunk.get("path", ""))
+        for pt in path_tokens:
+            tf[pt] = tf.get(pt, 0) + 1
+
+        doc_len[doc_id] = len(tokens) + len(path_tokens)
         doc_meta[doc_id] = chunk
         for term, freq in tf.items():
             postings[term][doc_id] = freq
             doc_freq[term] += 1
+
+        if i % 10000 == 0 or i == total:
+            print(f"\rIndexing: {i}/{total} chunks ({i * 100 // total}%)", end="", file=sys.stderr, flush=True)
+
+    if total > 0:
+        print(file=sys.stderr, flush=True)
 
     doc_count = len(chunks)
     avg_doc_len = (sum(doc_len.values()) / doc_count) if doc_count else 0

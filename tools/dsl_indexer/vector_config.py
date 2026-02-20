@@ -1,0 +1,12 @@
+import os
+
+from .config import DATA_DIR
+
+EMBEDDING_API_URL = os.getenv("WORKSPACE_EMBEDDING_API_URL", "http://localhost:1234/v1/embeddings")
+EMBEDDING_MODEL = os.getenv("WORKSPACE_EMBEDDING_MODEL", "text-embedding-nomic-embed-text-v1.5")
+EMBEDDING_DIMENSION = int(os.getenv("WORKSPACE_EMBEDDING_DIMENSION", "768"))
+EMBEDDING_BATCH_SIZE = int(os.getenv("WORKSPACE_EMBEDDING_BATCH_SIZE", "64"))
+VECTOR_INDEX_DIR = DATA_DIR / "vector_index"
+
+HNSW_EF_CONSTRUCTION = 200
+HNSW_M = 16
