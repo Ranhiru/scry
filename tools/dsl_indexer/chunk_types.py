@@ -6,6 +6,7 @@ from typing import Any, Dict
 class Chunk:
     chunk_id: str
     repo: str
+    repo_type: str
     path: str
     section: str
     line_start: int

@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 if __package__ in (None, ""):
     from pathlib import Path
@@ -11,7 +11,7 @@ if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[1]))
     from dsl_indexer.chunk import chunk_file
     from dsl_indexer.collect import collect_source_files
-    from dsl_indexer.config import INDEX_VERSION, SNIPPET_MAX_CHARS, SOURCE_REPOS, WORKSPACE_ROOT
+    from dsl_indexer.config import INDEX_VERSION, SNIPPET_MAX_CHARS, SOURCE_REPO_NAMES, WORKSPACE_ROOT
     from dsl_indexer.keyword_index import build_keyword_index, search_keyword_index
     from dsl_indexer.storage import (
         read_chunks,
@@ -24,7 +24,7 @@ if __package__ in (None, ""):
 else:
     from .chunk import chunk_file
     from .collect import collect_source_files
-    from .config import INDEX_VERSION, SNIPPET_MAX_CHARS, SOURCE_REPOS, WORKSPACE_ROOT
+    from .config import INDEX_VERSION, SNIPPET_MAX_CHARS, SOURCE_REPO_NAMES, WORKSPACE_ROOT
     from .keyword_index import build_keyword_index, search_keyword_index
     from .storage import (
         read_chunks,
@@ -48,6 +48,13 @@ def _import_vector_modules():
 
 
 def cmd_build(args: argparse.Namespace) -> int:
+    skip_vectors = getattr(args, "skip_vectors", False)
+    skip_keyword = getattr(args, "skip_keyword", False)
+
+    if skip_vectors and skip_keyword:
+        print("ERROR: Cannot skip both keyword and vector indexes.", file=sys.stderr)
+        return 1
+
     print("Collecting source files...", file=sys.stderr, flush=True)
     files = collect_source_files()
     total_files = len(files)
@@ -57,18 +64,20 @@ def cmd_build(args: argparse.Namespace) -> int:
         chunks.extend(chunk_file(path))
         if i % 500 == 0 or i == total_files:
             print(f"\rChunking: {i}/{total_files} files ({i * 100 // total_files}%)", end="", file=sys.stderr, flush=True)
-    print(f"\nCreated {len(chunks)} chunks. Building keyword index...", file=sys.stderr, flush=True)
+    print(f"\nCreated {len(chunks)} chunks.", file=sys.stderr, flush=True)
 
     print("Writing chunks...", file=sys.stderr, flush=True)
     write_chunks(chunks)
     chunk_dicts = [c.to_dict() for c in chunks]
-    keyword_index = build_keyword_index(chunk_dicts)
-    print("Writing keyword index...", file=sys.stderr, flush=True)
-    write_keyword_index(keyword_index)
-    print("Keyword index built.", file=sys.stderr, flush=True)
 
-    mode = "keyword"
-    skip_vectors = getattr(args, "skip_vectors", False)
+    modes = []
+
+    if not skip_keyword:
+        keyword_index = build_keyword_index(chunk_dicts)
+        print("Writing keyword index...", file=sys.stderr, flush=True)
+        write_keyword_index(keyword_index)
+        print("Keyword index built.", file=sys.stderr, flush=True)
+        modes.append("keyword")
 
     if not skip_vectors:
         try:
@@ -77,19 +86,19 @@ def cmd_build(args: argparse.Namespace) -> int:
             print("Building vector index...", file=sys.stderr, flush=True)
             embeddings = embed_chunks(chunk_dicts)
             vec_meta = build_vector_index(chunk_dicts, embeddings)
-            mode = "keyword+vector"
+            modes.append("vector")
             print(f"Vector index built: {vec_meta['doc_count']} docs, {vec_meta['dimension']}D", file=sys.stderr, flush=True)
         except Exception as exc:
-            print(f"WARNING: Vector index build failed (keyword index still built): {exc}", file=sys.stderr)
+            print(f"WARNING: Vector index build failed: {exc}", file=sys.stderr)
 
     meta = {
         "index_version": INDEX_VERSION,
         "built_at": datetime.now(timezone.utc).isoformat(),
         "workspace_root": str(WORKSPACE_ROOT),
-        "source_repos": SOURCE_REPOS,
+        "source_repos": SOURCE_REPO_NAMES,
         "file_count": len(files),
         "chunk_count": len(chunks),
-        "mode": mode,
+        "mode": "+".join(modes) if modes else "none",
     }
     write_meta(meta)
     print(json.dumps(meta, indent=2))
@@ -98,11 +107,12 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 def cmd_search(args: argparse.Namespace) -> int:
     repo_filter = args.repo or []
+    repo_type_filter = args.repo_type or None
 
     # Try vector search first, fall back to keyword
-    result = load_vector_hits(query=args.query, top_k=args.top_k, repo_filter=repo_filter)
+    result = load_vector_hits(query=args.query, top_k=args.top_k, repo_filter=repo_filter, repo_type_filter=repo_type_filter)
     if result.get("error"):
-        result = load_hits(query=args.query, top_k=args.top_k, repo_filter=repo_filter)
+        result = load_hits(query=args.query, top_k=args.top_k, repo_filter=repo_filter, repo_type_filter=repo_type_filter)
         result["search_mode"] = "keyword"
     else:
         result["search_mode"] = "vector"
@@ -137,7 +147,7 @@ def cmd_status(_: argparse.Namespace) -> int:
     return 0
 
 
-def load_hits(query: str, top_k: int, repo_filter: List[str]) -> Dict:
+def load_hits(query: str, top_k: int, repo_filter: List[str], repo_type_filter: Optional[List[str]] = None) -> Dict:
     index = read_keyword_index()
     if not index:
         return {
@@ -148,7 +158,7 @@ def load_hits(query: str, top_k: int, repo_filter: List[str]) -> Dict:
             "results": [],
             "error": "Index not found. Run build first.",
         }
-    rows = search_keyword_index(index=index, query=query, top_k=top_k, repo_filter=repo_filter)
+    rows = search_keyword_index(index=index, query=query, top_k=top_k, repo_filter=repo_filter, repo_type_filter=repo_type_filter)
     for row in rows:
         row["snippet"] = _to_snippet(row["snippet"])
     return {
@@ -160,7 +170,7 @@ def load_hits(query: str, top_k: int, repo_filter: List[str]) -> Dict:
     }
 
 
-def load_vector_hits(query: str, top_k: int, repo_filter: List[str]) -> Dict:
+def load_vector_hits(query: str, top_k: int, repo_filter: List[str], repo_type_filter: Optional[List[str]] = None) -> Dict:
     """Embed query and search the vector index. Returns same format as load_hits."""
     try:
         embed_texts, _, _, search_vector_index, vector_index_exists = _import_vector_modules()
@@ -197,7 +207,7 @@ def load_vector_hits(query: str, top_k: int, repo_filter: List[str]) -> Dict:
             "error": f"Embedding query failed: {exc}",
         }
 
-    rows = search_vector_index(query_embedding, top_k=top_k, repo_filter=repo_filter or None)
+    rows = search_vector_index(query_embedding, top_k=top_k, repo_filter=repo_filter or None, repo_type_filter=repo_type_filter or None)
     for row in rows:
         row["snippet"] = _to_snippet(row["snippet"])
 
@@ -230,12 +240,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_build = sub.add_parser("build", help="Build keyword index (and optionally vector index)")
     p_build.add_argument("--skip-vectors", action="store_true", help="Skip vector index build")
+    p_build.add_argument("--skip-keyword", action="store_true", help="Skip keyword index build")
     p_build.set_defaults(func=cmd_build)
 
     p_search = sub.add_parser("search", help="Search index (vector if available, keyword fallback)")
     p_search.add_argument("--query", required=True, help="Search query")
     p_search.add_argument("--top-k", type=int, default=8, help="Max hits")
     p_search.add_argument("--repo", action="append", help="Restrict to repo (repeatable)")
+    p_search.add_argument("--repo-type", action="append", help="Restrict to repo type: spec or impl (repeatable)")
     p_search.set_defaults(func=cmd_search)
 
     p_status = sub.add_parser("status", help="Get index status")

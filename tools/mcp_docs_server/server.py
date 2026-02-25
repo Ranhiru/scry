@@ -20,19 +20,43 @@ _spec = load_spec()
 
 
 @mcp.tool()
-def docs_search(query: str, top_k: int = 8, repo_filter: Optional[List[str]] = None) -> str:
+def docs_search(query: str, top_k: int = 8, repo_filter: Optional[List[str]] = None, repo_type: Optional[List[str]] = None) -> str:
     """Search indexed workspace docs using keyword rank.
 
     Args:
         query: Search query text
         top_k: Maximum number of results to return (1-50, default 8)
         repo_filter: Optional repo names to restrict results to
+        repo_type: Optional repo types to restrict results to (e.g. ["spec"] or ["impl"])
     """
     top_k = max(1, min(top_k, 50))
     rf = repo_filter or []
-    result = load_vector_hits(query=query, top_k=top_k, repo_filter=rf)
+    rtf = repo_type or None
+    result = load_vector_hits(query=query, top_k=top_k, repo_filter=rf, repo_type_filter=rtf)
     if result.get("error"):
-        result = load_hits(query=query, top_k=top_k, repo_filter=rf)
+        result = load_hits(query=query, top_k=top_k, repo_filter=rf, repo_type_filter=rtf)
+        result["search_mode"] = "keyword"
+    else:
+        result["search_mode"] = "vector"
+    return json.dumps(result, ensure_ascii=False)
+
+
+@mcp.tool()
+def examples_search(query: str, top_k: int = 8, repo_filter: Optional[List[str]] = None) -> str:
+    """Find real-world implementation examples of Orbit patterns in production repos (Storefront, Widgets, etc.).
+    Use this when looking for how Orbit patterns are used in practice.
+
+    Args:
+        query: Search query text
+        top_k: Maximum number of results to return (1-50, default 8)
+        repo_filter: Optional repo names to restrict within implementation repos
+    """
+    top_k = max(1, min(top_k, 50))
+    rf = repo_filter or []
+    rtf = ["impl"]
+    result = load_vector_hits(query=query, top_k=top_k, repo_filter=rf, repo_type_filter=rtf)
+    if result.get("error"):
+        result = load_hits(query=query, top_k=top_k, repo_filter=rf, repo_type_filter=rtf)
         result["search_mode"] = "keyword"
     else:
         result["search_mode"] = "vector"

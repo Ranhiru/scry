@@ -8,13 +8,13 @@ from .config import (
     EXCLUDED_FILE_PATTERNS,
     MAX_FILE_BYTES,
     REPOS_DIR,
-    SOURCE_REPOS,
+    SOURCE_REPO_NAMES,
     TEXT_EXTENSIONS,
 )
 
 
 def iter_source_files() -> Iterable[Path]:
-    for repo_name in SOURCE_REPOS:
+    for repo_name in SOURCE_REPO_NAMES:
         repo_root = REPOS_DIR / repo_name
         if not repo_root.exists():
             continue

@@ -8,14 +8,16 @@ set -euo pipefail
 WORKSPACE_DIR="$(cd "$(dirname "$0")" && pwd)"
 GH_ORG="git@github.com:your-org"
 
-REPOS=(
-  orbit.docs
-  orbit.web.frontend
-  orbit.search.core
-  orbit.design-system
-  orbit.ui-builder.web
-  orbit-design-system
-)
+# Read repo list from shared config (skip comments and blank lines)
+# Format: repo_name:type — we only need the name for cloning
+REPOS=()
+while IFS= read -r line; do
+  line="${line%%#*}"          # strip inline comments
+  line="${line// /}"          # trim spaces
+  [[ -z "$line" ]] && continue
+  line="${line%%:*}"          # strip :type suffix (e.g. :spec, :impl)
+  REPOS+=("$line")
+done < "$WORKSPACE_DIR/repos.conf"
 
 # ---------- helpers ----------
 info()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -93,13 +95,22 @@ fi
 # ---------- build search index ----------
 info "Building search index (this may take a minute)"
 
-python3 "$WORKSPACE_DIR/tools/dsl_indexer/index.py" build
+if $has_uv; then
+  uv --directory "$WORKSPACE_DIR/tools/mcp_docs_server" run python "$WORKSPACE_DIR/tools/dsl_indexer/index.py" build
+else
+  warn "uv not available — building keyword index only (vector index requires uv)"
+  python3 "$WORKSPACE_DIR/tools/dsl_indexer/index.py" build --skip-vectors
+fi
 
 ok "Search index built"
 
 # ---------- verify ----------
 info "Verifying index"
-python3 "$WORKSPACE_DIR/tools/dsl_indexer/index.py" status
+if $has_uv; then
+  uv --directory "$WORKSPACE_DIR/tools/mcp_docs_server" run python "$WORKSPACE_DIR/tools/dsl_indexer/index.py" status
+else
+  python3 "$WORKSPACE_DIR/tools/dsl_indexer/index.py" status
+fi
 
 # ---------- summary ----------
 echo ""
@@ -111,5 +122,5 @@ echo ""
 echo "  Next steps:"
 echo "    - Open the workspace in Claude Code:  cd $WORKSPACE_DIR && claude"
 echo "    - The MCP server starts automatically via .mcp.json"
-echo "    - Rebuild the index after pulling new changes:  python3 tools/dsl_indexer/index.py build"
+echo "    - Rebuild the index after pulling new changes:  make build"
 echo ""

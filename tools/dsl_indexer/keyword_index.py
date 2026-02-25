@@ -3,6 +3,8 @@ from collections import Counter, defaultdict
 from typing import Dict, List
 import math
 
+from typing import Optional
+
 from .text_utils import tokenize, tokenize_path
 
 
@@ -48,7 +50,7 @@ def build_keyword_index(chunks: List[Dict]) -> Dict:
     }
 
 
-def search_keyword_index(index: Dict, query: str, top_k: int, repo_filter: List[str]) -> List[Dict]:
+def search_keyword_index(index: Dict, query: str, top_k: int, repo_filter: List[str], repo_type_filter: Optional[List[str]] = None) -> List[Dict]:
     terms = tokenize(query)
     if not terms:
         return []
@@ -81,16 +83,20 @@ def search_keyword_index(index: Dict, query: str, top_k: int, repo_filter: List[
 
     rows = []
     repo_filter_set = set(repo_filter or [])
+    repo_type_filter_set = set(repo_type_filter or [])
     for doc_id, score in scores.items():
         row = doc_meta.get(doc_id)
         if not row:
             continue
         if repo_filter_set and row["repo"] not in repo_filter_set:
             continue
+        if repo_type_filter_set and row.get("repo_type", "spec") not in repo_type_filter_set:
+            continue
         rows.append(
             {
                 "chunk_id": row["chunk_id"],
                 "repo": row["repo"],
+                "repo_type": row.get("repo_type", "spec"),
                 "path": row["path"],
                 "section": row["section"],
                 "line_start": row["line_start"],

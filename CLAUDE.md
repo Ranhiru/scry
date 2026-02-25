@@ -8,7 +8,7 @@ Do not ever add Co-Authored-By: Claude in any of the commit messages, EVER.
 
 ## What This Workspace Is
 
-A multi-repo workspace for the **Orbit** UI/design-system platform at example-org. The root contains tooling, documentation, and configuration. Six source repositories live under `repos/`:
+A multi-repo workspace for the **Orbit** UI/design-system platform at example-org. The root contains tooling, documentation, and configuration. Source repositories live under `repos/` (listed in `repos.conf`):
 
 | Repo | Role | Stack |
 |---|---|---|
@@ -18,6 +18,8 @@ A multi-repo workspace for the **Orbit** UI/design-system platform at example-or
 | `orbit.design-system` | XmlSpec element definitions and generated JSON specs | .NET/C#, JSON |
 | `orbit.ui-builder.web` | Web renderer: XmlSpec → Orbit React components | TypeScript, React, pnpm |
 | `orbit-design-system` | Multi-platform design system (web/iOS/Android/tokens) | Turborepo, TypeScript, Swift, Android |
+| `Storefront.Monorepo` | Storefront monorepo | — |
+| `Widgets.Packages.Monorepo` | Widgets packages monorepo | — |
 
 ## Common Commands
 
@@ -68,7 +70,7 @@ make check
 
 ### Workspace Tooling (Python, in `tools/`)
 
-- **`tools/dsl_indexer/`** — Cross-repo keyword search (BM25). Collects text files from all 6 repos, chunks them (~1100 chars with overlap), and builds a keyword index. Output in `tools/dsl_indexer/data/`.
+- **`tools/dsl_indexer/`** — Cross-repo keyword search (BM25). Collects text files from all repos listed in `repos.conf`, chunks them (~1100 chars with overlap), and builds a keyword index. Output in `tools/dsl_indexer/data/`.
 - **`tools/dsl_toolkit/`** — XmlSpec XML validation, linting, parsing, and explanation against the design system spec. Available via CLI (`tools/dsl_toolkit/cli.py`) or MCP tools.
 - **`tools/mcp_docs_server/`** — FastMCP server exposing `docs_search`, `docs_get_chunk`, `docs_status`, `xmlspec_validate`, `xmlspec_lint`, `xmlspec_explain`, `xmlspec_explain_element` to Claude Code. Auto-starts via `.mcp.json`.
 

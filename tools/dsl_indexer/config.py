@@ -7,14 +7,30 @@ CHUNKS_PATH = DATA_DIR / "chunks.jsonl"
 KEYWORD_INDEX_PATH = DATA_DIR / "keyword_index.json"
 META_PATH = DATA_DIR / "meta.json"
 
-SOURCE_REPOS = [
-    "orbit.docs",
-    "orbit.web.frontend",
-    "orbit.search.core",
-    "orbit.design-system",
-    "orbit.ui-builder.web",
-    "orbit-design-system",
-]
+
+def _load_repos() -> list[dict]:
+    """Read repo entries from the shared repos.conf file.
+
+    Format: ``repo_name:type`` where *type* is ``spec`` or ``impl``.
+    If the type suffix is omitted the repo defaults to ``spec``.
+    """
+    conf = WORKSPACE_ROOT / "repos.conf"
+    repos: list[dict] = []
+    for line in conf.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if ":" in line:
+            name, repo_type = line.rsplit(":", 1)
+        else:
+            name, repo_type = line, "spec"
+        repos.append({"name": name.strip(), "type": repo_type.strip()})
+    return repos
+
+
+SOURCE_REPOS = _load_repos()
+SOURCE_REPO_NAMES: list[str] = [r["name"] for r in SOURCE_REPOS]
+REPO_TYPE_MAP: dict[str, str] = {r["name"]: r["type"] for r in SOURCE_REPOS}
 
 TEXT_EXTENSIONS = {
     ".md",

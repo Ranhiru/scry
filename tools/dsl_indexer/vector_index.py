@@ -30,6 +30,7 @@ def build_vector_index(
         name="workspace_docs",
         fields=[
             zvec.FieldSchema("repo", zvec.DataType.STRING),
+            zvec.FieldSchema("repo_type", zvec.DataType.STRING),
             zvec.FieldSchema("path", zvec.DataType.STRING),
             zvec.FieldSchema("section", zvec.DataType.STRING),
             zvec.FieldSchema("line_start", zvec.DataType.INT32),
@@ -49,9 +50,13 @@ def build_vector_index(
 
     collection = zvec.create_and_open(path=index_path, schema=schema)
 
-    # Create inverted index on repo field for efficient filtering
+    # Create inverted indexes for efficient filtering
     collection.create_index(
         field_name="repo",
+        index_param=zvec.InvertIndexParam(),
+    )
+    collection.create_index(
+        field_name="repo_type",
         index_param=zvec.InvertIndexParam(),
     )
 
@@ -73,6 +78,7 @@ def build_vector_index(
                     vectors={"embedding": vec},
                     fields={
                         "repo": chunk["repo"],
+                        "repo_type": chunk.get("repo_type", "spec"),
                         "path": chunk["path"],
                         "section": chunk["section"],
                         "line_start": chunk["line_start"],
@@ -108,26 +114,31 @@ def search_vector_index(
     *,
     top_k: int = 8,
     repo_filter: Optional[List[str]] = None,
+    repo_type_filter: Optional[List[str]] = None,
 ) -> List[Dict]:
     """Search the zvec vector index and return results matching keyword search format.
 
-    Returns list of dicts with: chunk_id, repo, path, section, line_start, line_end, score, snippet
+    Returns list of dicts with: chunk_id, repo, repo_type, path, section, line_start, line_end, score, snippet
     """
     if not vector_index_exists():
         return []
 
     collection = zvec.open(path=str(VECTOR_INDEX_DIR))
 
-    filter_expr = None
+    filter_clauses = []
     if repo_filter:
-        # Build OR filter: repo == 'a' OR repo == 'b'
-        clauses = [f"repo == '{r}'" for r in repo_filter]
-        filter_expr = " OR ".join(clauses)
+        clauses = [f"repo = '{r}'" for r in repo_filter]
+        filter_clauses.append("(" + " OR ".join(clauses) + ")")
+    if repo_type_filter:
+        clauses = [f"repo_type = '{t}'" for t in repo_type_filter]
+        filter_clauses.append("(" + " OR ".join(clauses) + ")")
+
+    filter_expr = " AND ".join(filter_clauses) if filter_clauses else None
 
     query_kwargs = {
         "vectors": zvec.VectorQuery("embedding", vector=query_embedding),
         "topk": top_k,
-        "output_fields": ["repo", "path", "section", "line_start", "line_end", "content"],
+        "output_fields": ["repo", "repo_type", "path", "section", "line_start", "line_end", "content"],
         "include_vector": False,
     }
     if filter_expr:
@@ -141,6 +152,7 @@ def search_vector_index(
             {
                 "chunk_id": doc.id,
                 "repo": doc.field("repo"),
+                "repo_type": doc.field("repo_type"),
                 "path": doc.field("path"),
                 "section": doc.field("section"),
                 "line_start": doc.field("line_start"),

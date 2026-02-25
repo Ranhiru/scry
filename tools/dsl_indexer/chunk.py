@@ -3,7 +3,7 @@ from typing import List, Tuple
 import hashlib
 import re
 
-from .config import CHUNK_OVERLAP_CHARS, CHUNK_TARGET_CHARS, REPOS_DIR
+from .config import CHUNK_OVERLAP_CHARS, CHUNK_TARGET_CHARS, REPO_TYPE_MAP, REPOS_DIR
 from .text_utils import tokenize
 from .chunk_types import Chunk
 
@@ -15,10 +15,11 @@ def chunk_file(path: Path) -> List[Chunk]:
         text = path.read_text(encoding="utf-8", errors="ignore")
 
     repo, rel_path = _repo_and_rel_path(path)
+    repo_type = REPO_TYPE_MAP.get(repo, "spec")
     if path.suffix.lower() in {".md", ".mdx"}:
-        chunks = _chunk_markdown(text, repo, rel_path)
+        chunks = _chunk_markdown(text, repo, rel_path, repo_type)
     else:
-        chunks = _chunk_plain(text, repo, rel_path)
+        chunks = _chunk_plain(text, repo, rel_path, repo_type)
     return chunks
 
 
@@ -30,7 +31,7 @@ def _repo_and_rel_path(path: Path) -> Tuple[str, str]:
     return repo, rel_path
 
 
-def _chunk_markdown(text: str, repo: str, rel_path: str) -> List[Chunk]:
+def _chunk_markdown(text: str, repo: str, rel_path: str, repo_type: str) -> List[Chunk]:
     lines = text.splitlines()
     sections = []
     current_heading = "Document Start"
@@ -60,6 +61,7 @@ def _chunk_markdown(text: str, repo: str, rel_path: str) -> List[Chunk]:
                 _build_chunk(
                     repo=repo,
                     rel_path=rel_path,
+                    repo_type=repo_type,
                     section=heading,
                     line_start=line_start,
                     line_end=line_end,
@@ -70,7 +72,7 @@ def _chunk_markdown(text: str, repo: str, rel_path: str) -> List[Chunk]:
     return chunks
 
 
-def _chunk_plain(text: str, repo: str, rel_path: str) -> List[Chunk]:
+def _chunk_plain(text: str, repo: str, rel_path: str, repo_type: str) -> List[Chunk]:
     lines = text.splitlines()
     content = "\n".join(lines).strip()
     if not content:
@@ -86,6 +88,7 @@ def _chunk_plain(text: str, repo: str, rel_path: str) -> List[Chunk]:
             _build_chunk(
                 repo=repo,
                 rel_path=rel_path,
+                repo_type=repo_type,
                 section="General",
                 line_start=line_start,
                 line_end=line_end,
@@ -131,6 +134,7 @@ def _line_window_for_piece(full_text: str, piece: str, base_line: int, offset_hi
 def _build_chunk(
     repo: str,
     rel_path: str,
+    repo_type: str,
     section: str,
     line_start: int,
     line_end: int,
@@ -143,6 +147,7 @@ def _build_chunk(
     return Chunk(
         chunk_id=chunk_id,
         repo=repo,
+        repo_type=repo_type,
         path=rel_path,
         section=section,
         line_start=line_start,
