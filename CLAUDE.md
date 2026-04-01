@@ -33,10 +33,16 @@ make build
 python3 tools/dsl_indexer/index.py build
 
 # Search the index from CLI
-python3 tools/dsl_indexer/index.py search --query "tenant resolution"
+workspace-docs search "tenant resolution"
+
+# Expand a search hit into full indexed content
+workspace-docs get-chunk <chunk_id>
 
 # Check index status
-python3 tools/dsl_indexer/index.py status
+workspace-docs status
+
+# Install the CLI into ~/.local/bin
+make install-cli
 
 # Link MCP server to Claude/Codex (usually not needed; .mcp.json auto-configures)
 make link
@@ -72,7 +78,7 @@ make check
 
 - **`tools/dsl_indexer/`** — Cross-repo keyword search (BM25). Collects text files from all repos listed in `repos.conf`, chunks them (~1100 chars with overlap), and builds a keyword index. Output in `tools/dsl_indexer/data/`.
 - **`tools/dsl_toolkit/`** — XmlSpec XML validation, linting, parsing, and explanation against the design system spec. Available via CLI (`tools/dsl_toolkit/cli.py`) or MCP tools.
-- **`tools/mcp_docs_server/`** — FastMCP server exposing `docs_search`, `docs_get_chunk`, `docs_status`, `xmlspec_validate`, `xmlspec_lint`, `xmlspec_explain`, `xmlspec_explain_element` to Claude Code. Auto-starts via `.mcp.json`.
+- **`tools/mcp_docs_server/`** — FastMCP server exposing `docs_search`, `docs_get_chunk`, `docs_status`, `xmlspec_validate`, `xmlspec_lint`, `xmlspec_explain`, `xmlspec_explain_element` to Claude Code, plus the reusable `workspace-docs` CLI/daemon flow. Auto-starts via `.mcp.json`.
 
 ### MCP Tools Available
 
@@ -86,6 +92,7 @@ When working in this workspace, use these MCP tools for grounded answers:
 ## Key Conventions
 
 - **Search before inference.** Always query the index before answering questions about Orbit architecture or XmlSpec. Do not guess when retrieval returns no hits — state the gap.
+- For anything Orbit, XmlSpec, Orbit, or cross-repo docs/examples related, use `workspace-docs` first, then run `workspace-docs get-chunk` on the most relevant search hit before answering.
 - **Cite sources.** Include file path and line range: `orbit.docs/internal/architecture-guidelines.md:42`
 - **Load instruction files before editing.** Check for `CLAUDE.md`, `.github/copilot-instructions.md`, and `README.md` in a repo before proposing changes.
 - **Prefer source over generated.** Use `src/`, `pages/`, `docs/`, `specs/`, `tools/` — not `node_modules/`, `.next/`, `build/`, `dist/`.

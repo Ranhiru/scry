@@ -1,8 +1,9 @@
 WORKSPACE := $(CURDIR)
 UV        := $(shell command -v uv 2>/dev/null)
 SERVER    := $(WORKSPACE)/tools/mcp_docs_server
+BIN_DIR   ?= $(HOME)/.local/bin
 
-.PHONY: setup build build-keyword-only build-vector-only link check
+.PHONY: setup build build-keyword-only build-vector-only link check install-cli uninstall-cli
 
 check:
 	@ok=true; \
@@ -24,6 +25,15 @@ build-keyword-only:
 
 build-vector-only:
 	$(UV) --directory $(SERVER) run python $(WORKSPACE)/tools/dsl_indexer/index.py build --skip-keyword
+
+install-cli:
+	@mkdir -p "$(BIN_DIR)"
+	@ln -sf "$(WORKSPACE)/tools/workspace-docs" "$(BIN_DIR)/workspace-docs"
+	@echo "Installed workspace-docs to $(BIN_DIR)/workspace-docs"
+
+uninstall-cli:
+	@rm -f "$(BIN_DIR)/workspace-docs"
+	@echo "Removed $(BIN_DIR)/workspace-docs"
 
 link:
 	@failed=false; \
