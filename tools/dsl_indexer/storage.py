@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Iterable, List
 
-from .config import CHUNKS_PATH, DATA_DIR, KEYWORD_INDEX_PATH, META_PATH
+from .config import CHUNKS_PATH, DATA_DIR, KEYWORD_INDEX_PATH, MANIFEST_PATH, META_PATH
 from .chunk_types import Chunk
 
 
@@ -47,6 +47,12 @@ def write_chunks(chunks: Iterable[Chunk]) -> None:
     _atomic_write(CHUNKS_PATH, "".join(lines).encode("utf-8"))
 
 
+def write_chunk_dicts(chunks: Iterable[Dict]) -> None:
+    """Write already-dict chunks (e.g. loaded via read_chunks then mutated)."""
+    lines = [json.dumps(chunk, ensure_ascii=False) + "\n" for chunk in chunks]
+    _atomic_write(CHUNKS_PATH, "".join(lines).encode("utf-8"))
+
+
 def read_chunks() -> List[Dict]:
     if not CHUNKS_PATH.exists():
         return []
@@ -81,4 +87,16 @@ def read_meta() -> Dict:
     if not META_PATH.exists():
         return {}
     data = _read_locked(META_PATH).decode("utf-8")
+    return json.loads(data)
+
+
+def write_manifest(manifest: Dict) -> None:
+    data = json.dumps(manifest, ensure_ascii=False).encode("utf-8")
+    _atomic_write(MANIFEST_PATH, data)
+
+
+def read_manifest() -> Dict:
+    if not MANIFEST_PATH.exists():
+        return {}
+    data = _read_locked(MANIFEST_PATH).decode("utf-8")
     return json.loads(data)

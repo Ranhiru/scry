@@ -6,6 +6,8 @@ DATA_DIR = WORKSPACE_ROOT / "tools" / "dsl_indexer" / "data"
 CHUNKS_PATH = DATA_DIR / "chunks.jsonl"
 KEYWORD_INDEX_PATH = DATA_DIR / "keyword_index.json"
 META_PATH = DATA_DIR / "meta.json"
+MANIFEST_PATH = DATA_DIR / "manifest.json"
+EMBEDDING_CACHE_PATH = DATA_DIR / "embedding_cache.sqlite"
 
 
 def _load_repos() -> list[dict]:

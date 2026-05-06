@@ -168,3 +168,74 @@ def search_vector_index(
 def vector_index_exists() -> bool:
     """Check whether the vector index directory exists and is non-empty."""
     return VECTOR_INDEX_DIR.exists() and any(VECTOR_INDEX_DIR.iterdir())
+
+
+def apply_vector_delta(
+    delete_ids: List[str],
+    upsert_chunks: List[Dict],
+    embeddings: Dict[str, List[float]],
+) -> Dict:
+    """Apply an incremental delta to the existing vector collection.
+
+    Deletes ``delete_ids``, then upserts ``upsert_chunks`` (using ``embeddings``
+    keyed by chunk_id), then flushes and optimizes. Returns a small summary
+    dict for logging.
+
+    Caller is responsible for ensuring the collection exists and has the
+    expected dimension.
+    """
+    collection = zvec.open(path=str(VECTOR_INDEX_DIR))
+
+    if delete_ids:
+        # zvec accepts a list of ids. Chunk to keep memory bounded.
+        batch = 1000
+        for start in range(0, len(delete_ids), batch):
+            collection.delete(ids=delete_ids[start : start + batch])
+
+    upserted = 0
+    if upsert_chunks:
+        batch = 1000
+        for start in range(0, len(upsert_chunks), batch):
+            slice_ = upsert_chunks[start : start + batch]
+            docs = []
+            for chunk in slice_:
+                cid = chunk["chunk_id"]
+                vec = embeddings.get(cid)
+                if vec is None:
+                    continue
+                docs.append(
+                    zvec.Doc(
+                        id=cid,
+                        vectors={"embedding": vec},
+                        fields={
+                            "repo": chunk["repo"],
+                            "repo_type": chunk.get("repo_type", "spec"),
+                            "path": chunk["path"],
+                            "section": chunk["section"],
+                            "line_start": chunk["line_start"],
+                            "line_end": chunk["line_end"],
+                            "content": chunk["content"],
+                        },
+                    )
+                )
+            if docs:
+                collection.upsert(docs)
+                upserted += len(docs)
+                print(
+                    f"\rVector delta: upserted {upserted}/{len(upsert_chunks)} docs",
+                    end="",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+    if upsert_chunks:
+        print(file=sys.stderr)
+
+    collection.flush()
+    collection.optimize()
+
+    return {
+        "deleted": len(delete_ids),
+        "upserted": upserted,
+        "index_path": str(VECTOR_INDEX_DIR),
+    }
