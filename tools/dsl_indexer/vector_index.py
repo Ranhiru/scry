@@ -4,7 +4,13 @@ from typing import Dict, List, Optional
 
 import zvec
 
-from .vector_config import EMBEDDING_DIMENSION, HNSW_EF_CONSTRUCTION, HNSW_M, VECTOR_INDEX_DIR
+from .vector_config import (
+    EMBEDDING_DIMENSION,
+    HNSW_EF_CONSTRUCTION,
+    HNSW_M,
+    VECTOR_COLLECTION_NAME,
+    VECTOR_INDEX_DIR,
+)
 
 
 def build_vector_index(
@@ -27,7 +33,7 @@ def build_vector_index(
         shutil.rmtree(VECTOR_INDEX_DIR)
 
     schema = zvec.CollectionSchema(
-        name="workspace_docs",
+        name=VECTOR_COLLECTION_NAME,
         fields=[
             zvec.FieldSchema("repo", zvec.DataType.STRING),
             zvec.FieldSchema("repo_type", zvec.DataType.STRING),

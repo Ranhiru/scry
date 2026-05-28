@@ -1,23 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Orbit Workspace Setup
-# Clones repos (or pulls latest if already cloned), installs MCP server
-# dependencies, and builds the search index. Safe to re-run at any time.
+# Workspace setup
+# - Installs MCP server Python deps via uv
+# - Reads workspace.yaml for repo list + clone URLs
+# - Clones (or pulls) each repo into ./repos/
+# - Builds the search index
+# Safe to re-run at any time.
 
 WORKSPACE_DIR="$(cd "$(dirname "$0")" && pwd)"
-GH_ORG="git@github.com:your-org"
-
-# Read repo list from shared config (skip comments and blank lines)
-# Format: repo_name:type — we only need the name for cloning
-REPOS=()
-while IFS= read -r line; do
-  line="${line%%#*}"          # strip inline comments
-  line="${line// /}"          # trim spaces
-  [[ -z "$line" ]] && continue
-  line="${line%%:*}"          # strip :type suffix (e.g. :spec, :impl)
-  REPOS+=("$line")
-done < "$WORKSPACE_DIR/repos.conf"
 
 # ---------- helpers ----------
 info()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -40,39 +31,74 @@ if ! command -v python3 &>/dev/null; then
 fi
 ok "python3 ($(python3 --version 2>&1))"
 
-has_uv=false
-if command -v uv &>/dev/null; then
-  has_uv=true
-  ok "uv ($(uv --version 2>&1))"
-else
-  warn "uv not found — MCP server venv will be skipped (install with: curl -LsSf https://astral.sh/uv/install.sh | sh)"
+if ! command -v uv &>/dev/null; then
+  fail "uv not found — install: curl -LsSf https://astral.sh/uv/install.sh | sh"
+  exit 1
 fi
+ok "uv ($(uv --version 2>&1))"
+
+# ---------- workspace.yaml ----------
+if [ ! -f "$WORKSPACE_DIR/workspace.yaml" ]; then
+  fail "workspace.yaml not found. Copy workspace.example.yaml -> workspace.yaml and edit it."
+  exit 1
+fi
+ok "workspace.yaml"
+
+# ---------- MCP server venv (needed to parse YAML) ----------
+info "Setting up MCP server Python environment"
+(
+  cd "$WORKSPACE_DIR/tools/mcp_docs_server"
+  uv sync
+)
+ok "MCP server dependencies installed"
+
+VENV_PYTHON="$WORKSPACE_DIR/tools/mcp_docs_server/.venv/bin/python"
+
+# ---------- read repo list ----------
+info "Reading repo list from workspace.yaml"
+REPO_JSON="$($VENV_PYTHON "$WORKSPACE_DIR/tools/workspace_config.py")"
+REPO_COUNT="$(echo "$REPO_JSON" | $VENV_PYTHON -c 'import json,sys; print(len(json.load(sys.stdin)["repos"]))')"
+ok "Found $REPO_COUNT repo entries"
 
 # ---------- clone / update repos ----------
 info "Syncing repositories in $WORKSPACE_DIR/repos"
-
 mkdir -p "$WORKSPACE_DIR/repos"
 
-for repo in "${REPOS[@]}"; do
+# Pipe each entry as "name\turl\tbranch" lines. clone_url may be empty if
+# git_host is unset and the entry has no explicit url.
+echo "$REPO_JSON" | $VENV_PYTHON -c '
+import json, sys
+data = json.load(sys.stdin)
+for r in data["repos"]:
+    print("\t".join([r["name"], r.get("clone_url") or "", r.get("branch") or ""]))
+' | while IFS=$'\t' read -r repo clone_url branch; do
   target="$WORKSPACE_DIR/repos/$repo"
+
   if [ -d "$target/.git" ]; then
-    # Repo exists — force checkout default branch and pull latest
-    default_branch=$(git -C "$target" remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')
-    if [ -z "$default_branch" ]; then
-      default_branch="main"
+    if [ -n "$branch" ]; then
+      default_branch="$branch"
+    else
+      default_branch=$(git -C "$target" remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')
+      [ -z "$default_branch" ] && default_branch="main"
     fi
     git -C "$target" checkout --force "$default_branch" 2>/dev/null
     git -C "$target" clean -fd 2>/dev/null
     if git -C "$target" pull --ff-only 2>/dev/null; then
       ok "$repo (updated $default_branch)"
     else
-      # ff-only failed — reset to origin
       git -C "$target" reset --hard "origin/$default_branch" 2>/dev/null
       ok "$repo (reset to origin/$default_branch)"
     fi
   else
-    info "Cloning $repo ..."
-    if git clone "$GH_ORG/$repo.git" "$target"; then
+    if [ -z "$clone_url" ]; then
+      warn "$repo — no clone URL (set git_host or repo.url in workspace.yaml); skipping"
+      continue
+    fi
+    info "Cloning $repo from $clone_url ..."
+    if git clone "$clone_url" "$target"; then
+      if [ -n "$branch" ]; then
+        git -C "$target" checkout "$branch" 2>/dev/null || true
+      fi
       ok "$repo (cloned)"
     else
       fail "$repo — clone failed (check SSH keys / access)"
@@ -80,43 +106,20 @@ for repo in "${REPOS[@]}"; do
   fi
 done
 
-# ---------- MCP server venv ----------
-if $has_uv; then
-  info "Setting up MCP server Python environment"
-  (
-    cd "$WORKSPACE_DIR/tools/mcp_docs_server"
-    uv sync
-  )
-  ok "MCP server dependencies installed"
-else
-  warn "Skipping MCP server venv (uv not available)"
-fi
-
 # ---------- build search index ----------
 info "Building search index (this may take a minute)"
-
-if $has_uv; then
-  uv --directory "$WORKSPACE_DIR/tools/mcp_docs_server" run python "$WORKSPACE_DIR/tools/dsl_indexer/index.py" build
-else
-  warn "uv not available — building keyword index only (vector index requires uv)"
-  python3 "$WORKSPACE_DIR/tools/dsl_indexer/index.py" build --skip-vectors
-fi
-
+uv --directory "$WORKSPACE_DIR/tools/mcp_docs_server" run python "$WORKSPACE_DIR/tools/dsl_indexer/index.py" build
 ok "Search index built"
 
 # ---------- verify ----------
 info "Verifying index"
-if $has_uv; then
-  uv --directory "$WORKSPACE_DIR/tools/mcp_docs_server" run python "$WORKSPACE_DIR/tools/dsl_indexer/index.py" status
-else
-  python3 "$WORKSPACE_DIR/tools/dsl_indexer/index.py" status
-fi
+uv --directory "$WORKSPACE_DIR/tools/mcp_docs_server" run python "$WORKSPACE_DIR/tools/dsl_indexer/index.py" status
 
 # ---------- summary ----------
 echo ""
 info "Setup complete"
 echo ""
-echo "  Repos:  ${#REPOS[@]} (in $WORKSPACE_DIR/repos)"
+echo "  Repos:  $REPO_COUNT (in $WORKSPACE_DIR/repos)"
 echo "  Index:  tools/dsl_indexer/data/"
 echo ""
 echo "  Next steps:"

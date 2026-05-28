@@ -3,6 +3,13 @@ UV        := $(shell command -v uv 2>/dev/null)
 SERVER    := $(WORKSPACE)/tools/mcp_docs_server
 BIN_DIR   ?= $(HOME)/.local/bin
 
+# Derive the CLI name from workspace.yaml (top-level `name:`). Falls back to
+# `workspace-docs` if the config is missing or malformed.
+CLI_NAME := $(shell awk -F': *' '/^name:/ {gsub(/[ \t"]+/,"",$$2); print $$2; exit}' $(WORKSPACE)/workspace.yaml 2>/dev/null)
+ifeq ($(strip $(CLI_NAME)),)
+CLI_NAME := workspace-docs
+endif
+
 .PHONY: setup build build-keyword-only build-vector-only link check install-cli uninstall-cli
 
 check:
@@ -21,38 +28,38 @@ build:
 	$(UV) --directory $(SERVER) run python $(WORKSPACE)/tools/dsl_indexer/index.py build
 
 build-keyword-only:
-	python3 tools/dsl_indexer/index.py build --skip-vectors
+	$(UV) --directory $(SERVER) run python $(WORKSPACE)/tools/dsl_indexer/index.py build --skip-vectors
 
 build-vector-only:
 	$(UV) --directory $(SERVER) run python $(WORKSPACE)/tools/dsl_indexer/index.py build --skip-keyword
 
 install-cli:
 	@mkdir -p "$(BIN_DIR)"
-	@ln -sf "$(WORKSPACE)/tools/workspace-docs" "$(BIN_DIR)/workspace-docs"
-	@echo "Installed workspace-docs to $(BIN_DIR)/workspace-docs"
+	@ln -sf "$(WORKSPACE)/tools/docs-cli" "$(BIN_DIR)/$(CLI_NAME)"
+	@echo "Installed $(CLI_NAME) to $(BIN_DIR)/$(CLI_NAME)"
 
 uninstall-cli:
-	@rm -f "$(BIN_DIR)/workspace-docs"
-	@echo "Removed $(BIN_DIR)/workspace-docs"
+	@rm -f "$(BIN_DIR)/$(CLI_NAME)"
+	@echo "Removed $(BIN_DIR)/$(CLI_NAME)"
 
 link:
 	@failed=false; \
 	if command -v claude >/dev/null 2>&1; then \
 		if CLAUDECODE= claude mcp list >/dev/null 2>&1; then \
-			if CLAUDECODE= claude mcp get workspace-docs >/dev/null 2>&1; then \
+			if CLAUDECODE= claude mcp get $(CLI_NAME) >/dev/null 2>&1; then \
 				if [ "$(OVERRIDE)" = "1" ]; then \
 					echo "Relinking MCP server for Claude (OVERRIDE=1): removing existing config first..."; \
-					CLAUDECODE= claude mcp remove workspace-docs >/dev/null 2>&1 || true; \
+					CLAUDECODE= claude mcp remove $(CLI_NAME) >/dev/null 2>&1 || true; \
 				else \
-					echo "WARN: workspace-docs already exists for Claude. Use 'make link OVERRIDE=1' to recreate it."; \
+					echo "WARN: $(CLI_NAME) already exists for Claude. Use 'make link OVERRIDE=1' to recreate it."; \
 				fi; \
 			fi; \
-			if [ "$(OVERRIDE)" = "1" ] || ! CLAUDECODE= claude mcp get workspace-docs >/dev/null 2>&1; then \
+			if [ "$(OVERRIDE)" = "1" ] || ! CLAUDECODE= claude mcp get $(CLI_NAME) >/dev/null 2>&1; then \
 				echo "Linking MCP server for Claude..."; \
-				if ! CLAUDECODE= claude mcp add workspace-docs \
+				if ! CLAUDECODE= claude mcp add $(CLI_NAME) \
 					--scope user --transport stdio -- \
 					$(UV) --directory $(SERVER) run server.py; then \
-					echo "WARN: failed to add workspace-docs for Claude"; \
+					echo "WARN: failed to add $(CLI_NAME) for Claude"; \
 					failed=true; \
 				fi; \
 			fi; \
@@ -64,19 +71,19 @@ link:
 	fi; \
 	if command -v codex >/dev/null 2>&1; then \
 		if codex mcp list >/dev/null 2>&1; then \
-			if codex mcp get workspace-docs >/dev/null 2>&1; then \
+			if codex mcp get $(CLI_NAME) >/dev/null 2>&1; then \
 				if [ "$(OVERRIDE)" = "1" ]; then \
 					echo "Relinking MCP server for Codex (OVERRIDE=1): removing existing config first..."; \
-					codex mcp remove workspace-docs >/dev/null 2>&1 || true; \
+					codex mcp remove $(CLI_NAME) >/dev/null 2>&1 || true; \
 				else \
-					echo "WARN: workspace-docs already exists for Codex. Use 'make link OVERRIDE=1' to recreate it."; \
+					echo "WARN: $(CLI_NAME) already exists for Codex. Use 'make link OVERRIDE=1' to recreate it."; \
 				fi; \
 			fi; \
-			if [ "$(OVERRIDE)" = "1" ] || ! codex mcp get workspace-docs >/dev/null 2>&1; then \
+			if [ "$(OVERRIDE)" = "1" ] || ! codex mcp get $(CLI_NAME) >/dev/null 2>&1; then \
 				echo "Linking MCP server for Codex..."; \
-				if ! codex mcp add workspace-docs -- \
+				if ! codex mcp add $(CLI_NAME) -- \
 					$(UV) --directory $(SERVER) run server.py; then \
-					echo "WARN: failed to add workspace-docs for Codex"; \
+					echo "WARN: failed to add $(CLI_NAME) for Codex"; \
 					failed=true; \
 				fi; \
 			fi; \

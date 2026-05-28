@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI wrapper for the Orbit docs MCP server."""
+"""CLI wrapper for the workspace docs MCP server."""
 
 from __future__ import annotations
 
@@ -23,13 +23,17 @@ from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-APP_NAME = "workspace-docs"
+sys.path.insert(0, str(WORKSPACE_ROOT / "tools"))
+from workspace_config import load_config  # noqa: E402
+
+_CFG = load_config()
+APP_NAME = _CFG.name
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_MCP_PATH = "/mcp"
 STARTUP_TIMEOUT_SECONDS = 10.0
 STATE_BASE_DIR = Path(
-    os.environ.get("WORKSPACE_DOCS_STATE_DIR", str(Path.home() / ".local" / "state" / APP_NAME))
+    os.environ.get("DOCS_CLI_STATE_DIR", str(Path.home() / ".local" / "state" / APP_NAME))
 )
 VENV_PYTHON = WORKSPACE_ROOT / "tools" / "mcp_docs_server" / ".venv" / "bin" / "python"
 DAEMON_SCRIPT = WORKSPACE_ROOT / "tools" / "mcp_docs_server" / "daemon.py"
@@ -264,7 +268,7 @@ def format_search_results(parsed: dict[str, Any]) -> str:
     results = parsed.get("results") or []
     if results and results[0].get("chunk_id"):
         lines.append("")
-        lines.append(f"Next: workspace-docs get-chunk {results[0]['chunk_id']}")
+        lines.append(f"Next: {APP_NAME} get-chunk {results[0]['chunk_id']}")
 
     return "\n".join(lines)
 
@@ -414,9 +418,10 @@ def cmd_daemon_logs(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Orbit docs CLI backed by a reusable local MCP daemon",
+        prog=APP_NAME,
+        description="Workspace docs CLI backed by a reusable local MCP daemon",
         epilog=(
-            "Use `search` for docs, `examples` for production usage, `get-chunk` to expand a hit, "
+            "Use `search` for docs, `examples` for implementation usage, `get-chunk` to expand a hit, "
             "and `daemon status` to inspect the local server."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -431,8 +436,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.description = "Search indexed workspace docs."
     p_search.epilog = (
         "Examples:\n"
-        "  workspace-docs search \"XmlSpec banner component best practices\"\n"
-        "  workspace-docs search --query \"tenant resolution\" --top-k 3"
+        f"  {APP_NAME} search \"authentication flow\"\n"
+        f"  {APP_NAME} search --query \"rate limiting\" --top-k 3"
     )
     p_search.add_argument("query_value", nargs="?", help="Search query")
     p_search.add_argument("--query", dest="query", help="Search query")
@@ -447,11 +452,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Search implementation examples only",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_examples.description = "Search implementation examples only."
+    p_examples.description = "Search implementation examples only (type=impl repos)."
     p_examples.epilog = (
         "Examples:\n"
-        "  workspace-docs examples \"tracking payload\"\n"
-        "  workspace-docs examples --query \"Orbit banner usage\" --top-k 5"
+        f"  {APP_NAME} examples \"request handler\"\n"
+        f"  {APP_NAME} examples --query \"event payload shape\" --top-k 5"
     )
     p_examples.add_argument("query_value", nargs="?", help="Search query")
     p_examples.add_argument("--query", dest="query", help="Search query")

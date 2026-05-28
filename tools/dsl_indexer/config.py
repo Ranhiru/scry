@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -9,30 +10,19 @@ META_PATH = DATA_DIR / "meta.json"
 MANIFEST_PATH = DATA_DIR / "manifest.json"
 EMBEDDING_CACHE_PATH = DATA_DIR / "embedding_cache.sqlite"
 
+# Allow `import workspace_config` from any indexer module.
+_TOOLS_DIR = str(WORKSPACE_ROOT / "tools")
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
 
-def _load_repos() -> list[dict]:
-    """Read repo entries from the shared repos.conf file.
+from workspace_config import load_config  # noqa: E402
 
-    Format: ``repo_name:type`` where *type* is ``spec`` or ``impl``.
-    If the type suffix is omitted the repo defaults to ``spec``.
-    """
-    conf = WORKSPACE_ROOT / "repos.conf"
-    repos: list[dict] = []
-    for line in conf.read_text().splitlines():
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if ":" in line:
-            name, repo_type = line.rsplit(":", 1)
-        else:
-            name, repo_type = line, "spec"
-        repos.append({"name": name.strip(), "type": repo_type.strip()})
-    return repos
+_CFG = load_config()
 
-
-SOURCE_REPOS = _load_repos()
+SOURCE_REPOS = [{"name": r.name, "type": r.type} for r in _CFG.repos]
 SOURCE_REPO_NAMES: list[str] = [r["name"] for r in SOURCE_REPOS]
 REPO_TYPE_MAP: dict[str, str] = {r["name"]: r["type"] for r in SOURCE_REPOS}
+WORKSPACE_NAME: str = _CFG.name
 
 TEXT_EXTENSIONS = {
     ".md",
@@ -104,4 +94,3 @@ CHUNK_TARGET_CHARS = 1100
 CHUNK_OVERLAP_CHARS = 180
 SNIPPET_MAX_CHARS = 260
 INDEX_VERSION = "1.1.0"
-

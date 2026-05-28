@@ -10,14 +10,10 @@ from starlette.responses import JSONResponse
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from dsl_indexer.index import get_chunk, load_hits, load_vector_hits  # noqa: E402
 from dsl_indexer.storage import read_meta  # noqa: E402
-from dsl_toolkit.explainer import explain, explain_element  # noqa: E402
-from dsl_toolkit.linter import lint  # noqa: E402
-from dsl_toolkit.spec_loader import load_spec  # noqa: E402
-from dsl_toolkit.validator import validate  # noqa: E402
-from dsl_toolkit.xml_parser import parse_xmlspec_xml  # noqa: E402
+from plugin_registry import discover_plugins  # noqa: E402
+from workspace_config import load_config  # noqa: E402
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-_SPEC = load_spec()
 
 
 def docs_search(
@@ -26,7 +22,7 @@ def docs_search(
     repo_filter: Optional[List[str]] = None,
     repo_type: Optional[List[str]] = None,
 ) -> str:
-    """Search indexed workspace docs using keyword rank.
+    """Search indexed workspace docs using vector + keyword rank.
 
     Args:
         query: Search query text
@@ -47,8 +43,9 @@ def docs_search(
 
 
 def examples_search(query: str, top_k: int = 8, repo_filter: Optional[List[str]] = None) -> str:
-    """Find real-world implementation examples of Orbit patterns in production repos (Storefront, Widgets, etc.).
-    Use this when looking for how Orbit patterns are used in practice.
+    """Find real-world implementation examples by searching only repos tagged with `type: impl`.
+
+    Use this when you want concrete usage code rather than documentation/specs.
 
     Args:
         query: Search query text
@@ -89,78 +86,11 @@ def docs_status() -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-def xmlspec_validate(xml_text: str) -> str:
-    """Validate a XmlSpec XML fragment against the design system spec.
-
-    Args:
-        xml_text: XmlSpec XML string to validate
-    """
-    result = parse_xmlspec_xml(xml_text, _SPEC)
-    if result.errors:
-        out = {
-            "valid": False,
-            "parse_errors": [
-                {"line": e.line, "column": e.column, "message": e.message}
-                for e in result.errors
-            ],
-        }
-        return json.dumps(out, ensure_ascii=False)
-
-    vr = validate(result.tree, _SPEC)
-    out = {
-        "valid": vr.valid,
-        "errors": [{"path": e.path, "message": e.message, "rule": e.rule} for e in vr.errors],
-        "warnings": [{"path": e.path, "message": e.message, "rule": e.rule} for e in vr.warnings],
-    }
-    return json.dumps(out, ensure_ascii=False)
-
-
-def xmlspec_lint(xml_text: str, rules: Optional[List[str]] = None) -> str:
-    """Lint a XmlSpec XML fragment for style and deprecation issues.
-
-    Args:
-        xml_text: XmlSpec XML string to lint
-        rules: Optional list of rule names to run (default: all rules)
-    """
-    result = parse_xmlspec_xml(xml_text, _SPEC)
-    if result.errors:
-        return json.dumps(
-            {"error": "Parse failed", "details": result.errors[0].message},
-            ensure_ascii=False,
-        )
-
-    issues = lint(result.tree, _SPEC, rules)
-    out = {
-        "issues": [
-            {"path": i.path, "message": i.message, "rule": i.rule, "severity": i.severity}
-            for i in issues
-        ],
-        "issue_count": len(issues),
-    }
-    return json.dumps(out, ensure_ascii=False)
-
-
-def xmlspec_explain(xml_text: str, verbose: bool = False) -> str:
-    """Explain a XmlSpec XML fragment in human-readable form.
-
-    Args:
-        xml_text: XmlSpec XML string to explain
-        verbose: Show all properties including unset ones
-    """
-    result = parse_xmlspec_xml(xml_text, _SPEC)
-    if result.errors:
-        return f"Parse error: {result.errors[0].message}"
-    return explain(result.tree, _SPEC, verbose=verbose)
-
-
-def xmlspec_explain_element(element_name: str, verbose: bool = False) -> str:
-    """Describe an element type from the XmlSpec design system spec.
-
-    Args:
-        element_name: Element name (case-insensitive), e.g. 'Button', 'Text', 'Stack'
-        verbose: Show full property details including defaults and all enum values
-    """
-    return explain_element(element_name, _SPEC, verbose=verbose)
+def _register_core_tools(mcp: FastMCP) -> None:
+    mcp.tool()(docs_search)
+    mcp.tool()(examples_search)
+    mcp.tool()(docs_get_chunk)
+    mcp.tool()(docs_status)
 
 
 def create_mcp(
@@ -170,21 +100,24 @@ def create_mcp(
     streamable_http_path: str = "/mcp",
     include_health: bool = False,
 ) -> FastMCP:
+    cfg = load_config()
     mcp = FastMCP(
-        "workspace-docs-search",
+        cfg.name,
         host=host,
         port=port,
         streamable_http_path=streamable_http_path,
     )
 
-    mcp.tool()(docs_search)
-    mcp.tool()(examples_search)
-    mcp.tool()(docs_get_chunk)
-    mcp.tool()(docs_status)
-    mcp.tool()(xmlspec_validate)
-    mcp.tool()(xmlspec_lint)
-    mcp.tool()(xmlspec_explain)
-    mcp.tool()(xmlspec_explain_element)
+    _register_core_tools(mcp)
+
+    for plugin in discover_plugins(cfg):
+        try:
+            plugin.register(mcp, cfg)
+        except Exception as exc:
+            print(
+                f"[mcp_docs_server] plugin {plugin.name!r} failed to register: {exc}",
+                file=sys.stderr,
+            )
 
     if include_health:
 

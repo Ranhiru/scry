@@ -2,105 +2,90 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commit Rules
-
-Do not ever add Co-Authored-By: Claude in any of the commit messages, EVER.
-
 ## What This Workspace Is
 
-A multi-repo workspace for the **Orbit** UI/design-system platform at example-org. The root contains tooling, documentation, and configuration. Source repositories live under `repos/` (listed in `repos.conf`):
+A generic, multi-repo RAG (Retrieval-Augmented Generation) toolkit. Clones a set of repos listed in `workspace.yaml`, builds a hybrid keyword + vector index across their contents, and exposes search via a local MCP server / CLI / daemon.
 
-| Repo | Role | Stack |
-|---|---|---|
-| `orbit.docs` | Architecture docs, patterns, guidelines | Docusaurus, Markdown |
-| `orbit.web.frontend` | Shared Next.js frontend (homepage/search/details/gallery/enquiry) | Next.js, TypeScript, pnpm |
-| `orbit.search.core` | Backend SDK: pipeline, plugins, tenant resolution | .NET/C# |
-| `orbit.design-system` | XmlSpec element definitions and generated JSON specs | .NET/C#, JSON |
-| `orbit.ui-builder.web` | Web renderer: XmlSpec → Orbit React components | TypeScript, React, pnpm |
-| `orbit-design-system` | Multi-platform design system (web/iOS/Android/tokens) | Turborepo, TypeScript, Swift, Android |
-| `Storefront.Monorepo` | Storefront monorepo | — |
-| `Widgets.Packages.Monorepo` | Widgets packages monorepo | — |
+Project-specific extensions (like the XmlSpec XML toolkit) live under `tools/plugins/` and load only when enabled in `workspace.yaml`.
+
+See `ORBIT.md` for the example-org/Orbit-specific setup that this workspace was originally built for.
 
 ## Common Commands
 
 ```bash
-# First-time setup (clones repos, installs deps, builds index)
+# First-time setup (uv venv, clone repos, build index)
 make setup
 
-# Rebuild the search index after pulling new changes
+# Rebuild the index after pulling new changes
 make build
-# or directly:
-python3 tools/dsl_indexer/index.py build
+make build-keyword-only   # skip embeddings
+make build-vector-only    # skip BM25
 
-# Search the index from CLI
-workspace-docs search "tenant resolution"
+# CLI (installed by `make install-cli` — name comes from workspace.yaml)
+<cli-name> search "query"
+<cli-name> examples "query"          # search only type=impl repos
+<cli-name> get-chunk <chunk_id>
+<cli-name> status
+<cli-name> daemon status
 
-# Expand a search hit into full indexed content
-workspace-docs get-chunk <chunk_id>
-
-# Check index status
-workspace-docs status
-
-# Install the CLI into ~/.local/bin
+# Install the CLI symlink and register the MCP server with Claude/Codex
 make install-cli
-
-# Link MCP server to Claude/Codex (usually not needed; .mcp.json auto-configures)
 make link
-
-# Check prerequisites
-make check
 ```
 
-### Per-Repo Commands
+## Configuration: `workspace.yaml`
 
-**orbit.web.frontend:** `pnpm build`, `pnpm dev`, app mode selection via `pnpm use-homepage` / `pnpm use-search` / `pnpm use-details`
+A single file at the workspace root drives everything:
 
-**orbit.search.core:** Open `src/Orbit.Search.Core.sln` in IDE
+```yaml
+name: workspace-docs                  # CLI binary name, vector index name, MCP server name
+git_host: git@github.com:my-org       # default clone host (optional)
+embeddings:
+  api_url: http://localhost:1234/v1/embeddings
+  model: text-embedding-nomic-embed-text-v1.5
+  dimension: 768
+repos:
+  - { name: docs-repo, type: spec }
+  - { name: app-repo,  type: impl }
+plugins:
+  xmlspec:
+    enabled: false
+    spec_dir: repos/some-repo/specs
+```
 
-**orbit.design-system:** Open `src/Orbit.DesignSystem.Elements.sln`; see `specs/readme.md` for spec generation
-
-**orbit.ui-builder.web:** `pnpm storybook` for component work; `pnpm build`, `pnpm test`, `pnpm lint`
-
-**orbit-design-system:** Turborepo root — `pnpm dev`, `pnpm build`; `pnpm sync` for Figma token updates
+- `type` is either `spec` (docs/design/API specs) or `impl` (real-world usage code). `examples_search` filters to `type=impl`.
+- Per-repo `url` overrides `git_host`; per-repo `branch` pins a non-default branch.
+- Copy `workspace.example.yaml` to bootstrap a new workspace.
 
 ## Architecture
 
-### Data Flow
+### Components
 
-1. **XmlSpec elements** are defined in `orbit.design-system` (C#) and compiled to JSON specs
-2. **Orbit Core** (`orbit.search.core`) consumes XmlSpec via its pipeline/plugin framework, resolving tenants and serving API responses
-3. **UI Builder** (`orbit.ui-builder.web`) renders XmlSpec for web by mapping elements/actions to Orbit React components
-4. **Orbit Design System** provides the shared component library and design tokens consumed by the UI builder and frontends
-5. **Homepage Frontend** (`orbit.web.frontend`) integrates the UI builder into the production Next.js app
-6. **orbit.docs** is the shared documentation hub for architecture, patterns, and guides
+- **`tools/dsl_indexer/`** — file collection, chunking (~1100 chars w/ overlap), BM25 (`keyword_index.py`), and HNSW vector index via `zvec` (`vector_index.py`). Embeddings are produced via an OpenAI-compatible `/v1/embeddings` endpoint (`embedding.py`) and cached by content hash in SQLite. Incremental rebuilds use a manifest diff.
+- **`tools/mcp_docs_server/`** — FastMCP server (`app.py`), Streamable HTTP daemon (`daemon.py`), and the CLI (`cli.py`). All three share `create_mcp()`, which loads `workspace.yaml`, registers the four built-in tools, then iterates enabled plugins.
+- **`tools/workspace_config.py`** — single source of truth for config; exposes a typed dataclass via `load_config()`.
+- **`tools/plugin_registry.py`** — minimal discovery contract: each plugin lives at `tools/plugins/<name>/plugin.py` with a `Plugin` class exposing `name` and `register(mcp, cfg)`.
 
-### Workspace Tooling (Python, in `tools/`)
+### Built-in MCP tools
 
-- **`tools/dsl_indexer/`** — Cross-repo keyword search (BM25). Collects text files from all repos listed in `repos.conf`, chunks them (~1100 chars with overlap), and builds a keyword index. Output in `tools/dsl_indexer/data/`.
-- **`tools/dsl_toolkit/`** — XmlSpec XML validation, linting, parsing, and explanation against the design system spec. Available via CLI (`tools/dsl_toolkit/cli.py`) or MCP tools.
-- **`tools/mcp_docs_server/`** — FastMCP server exposing `docs_search`, `docs_get_chunk`, `docs_status`, `xmlspec_validate`, `xmlspec_lint`, `xmlspec_explain`, `xmlspec_explain_element` to Claude Code, plus the reusable `workspace-docs` CLI/daemon flow. Auto-starts via `.mcp.json`.
+- `docs_search(query, top_k, repo_filter, repo_type)` — hybrid vector→keyword fallback.
+- `examples_search(query, top_k, repo_filter)` — same as `docs_search` but pinned to `type=impl`.
+- `docs_get_chunk(chunk_id)` — return full text + metadata for a hit.
+- `docs_status()` — index metadata and readiness.
 
-### MCP Tools Available
+### Plugin: `xmlspec`
 
-When working in this workspace, use these MCP tools for grounded answers:
-- `docs_search(query, top_k, repo_filter)` — search indexed documentation
-- `docs_get_chunk(chunk_id)` — retrieve full text of a search result
-- `xmlspec_validate(xml_text)` — validate XmlSpec XML against the spec
-- `xmlspec_lint(xml_text)` — check XmlSpec XML for style/deprecation issues
-- `xmlspec_explain(xml_text)` / `xmlspec_explain_element(element_name)` — human-readable XmlSpec descriptions
+Optional. When enabled in `workspace.yaml`, registers `xmlspec_validate`, `xmlspec_lint`, `xmlspec_explain`, `xmlspec_explain_element` against the XmlSpec JSON Schema spec at `plugins.xmlspec.spec_dir`. See `ORBIT.md`.
 
 ## Key Conventions
 
-- **Search before inference.** Always query the index before answering questions about Orbit architecture or XmlSpec. Do not guess when retrieval returns no hits — state the gap.
-- For anything Orbit, XmlSpec, Orbit, or cross-repo docs/examples related, use `workspace-docs` first, then run `workspace-docs get-chunk` on the most relevant search hit before answering.
-- **Cite sources.** Include file path and line range: `orbit.docs/internal/architecture-guidelines.md:42`
-- **Load instruction files before editing.** Check for `CLAUDE.md`, `.github/copilot-instructions.md`, and `README.md` in a repo before proposing changes.
-- **Prefer source over generated.** Use `src/`, `pages/`, `docs/`, `specs/`, `tools/` — not `node_modules/`, `.next/`, `build/`, `dist/`.
-- For Orbit coding patterns: `repos/orbit.docs/internal/architecture-guidelines.md`
-- For XmlSpec spec questions: `repos/orbit.design-system/specs/`
-- For web renderer behavior: both `repos/orbit.ui-builder.web/` and `repos/orbit-design-system/`
+- **Search before inference.** Query the index before answering questions about indexed repos.
+- **Cite sources.** Include file path and line range: `repos/some-repo/path/file.md:42`.
+- **Prefer source over generated.** Use `src/`, `docs/`, `specs/`, `tools/` — not `node_modules/`, `.next/`, `build/`, `dist/`.
+- **Workspace config drives behavior.** Renaming the CLI, changing the embedding model, or adding/removing repos is a `workspace.yaml` edit followed by `make build`.
 
 ## Prerequisites
 
 - `git`, `python3` (3.10+), `uv` (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- Optional: `claude` CLI, `codex`
+- An OpenAI-compatible embeddings endpoint (LM Studio, Ollama, llama-server, vLLM, OpenAI API, etc.) reachable at `embeddings.api_url`.
+- Optional: `claude` CLI, `codex` (for `make link`).
