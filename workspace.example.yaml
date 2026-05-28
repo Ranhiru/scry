@@ -1,15 +1,16 @@
 # Workspace configuration template.
 #
-# Copy to `workspace.yaml`, fill in your repos, and run `make setup`.
+# Copy to `workspace.yaml`, edit, then run `make setup`.
+# workspace.yaml itself is .gitignored — each checkout sets its own.
 
 # CLI binary name (used for `make install-cli` symlink, vector index name,
 # MCP server name, and state directory).
 name: workspace-docs
 
 # Default git host. Entries under `repos:` without an explicit `url` will be
-# cloned from `${git_host}/<name>.git`. Leave commented out if you intend to
-# pre-clone repos into ./repos/ yourself.
-# git_host: git@github.com:your-org
+# cloned from `${git_host}/<name>.git`. Comment out if you pre-clone repos
+# into ./repos/ yourself.
+git_host: git@github.com:your-org
 
 embeddings:
   # OpenAI-compatible /v1/embeddings endpoint. Works with LM Studio, Ollama,
@@ -20,21 +21,23 @@ embeddings:
   batch_size: 64
   concurrency: 4
 
-# Each repo has a `name` and a `type` (either `spec` or `impl`).
+# Each repo has a `name` and a `type`:
 #   spec — documentation, design specs, public API surfaces
-#   impl — real-world implementation/usage code
+#   impl — real-world implementation / usage code (examples_search filters to these)
 # Optional per-repo fields:
 #   url    — full clone URL (overrides git_host)
 #   branch — branch to check out after cloning
 repos:
   - { name: my-docs, type: spec }
+  - { name: design-system, type: spec }
+  - { name: api-contracts, type: spec }
   - { name: my-app, type: impl }
-  # - { name: external-lib, type: impl, url: git@github.com:other-org/external-lib.git, branch: develop }
+  - { name: my-api, type: impl }
+  - { name: external-lib, type: impl, url: git@github.com:other-org/external-lib.git, branch: develop }
 
-# Optional plugins. Remove or set `enabled: false` to skip a plugin.
-# Built-in plugins:
+# Optional plugins. Each entry needs `enabled: true` to load. Built-in plugins:
 #   xmlspec — XmlSpec XML validate / lint / explain MCP tools (example-org/Orbit specific)
-plugins: {}
-#   xmlspec:
-#     enabled: true
-#     spec_dir: repos/orbit.design-system/specs
+plugins:
+  xmlspec:
+    enabled: false
+    spec_dir: repos/design-system/specs
