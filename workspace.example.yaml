@@ -35,9 +35,10 @@ repos:
   - { name: my-api, type: impl }
   - { name: external-lib, type: impl, url: git@github.com:other-org/external-lib.git, branch: develop }
 
-# Optional plugins. Each entry needs `enabled: true` to load. Built-in plugins:
-#   xmlspec — XmlSpec XML validate / lint / explain MCP tools (example-org/Orbit specific)
+# Optional plugins. Each entry needs `enabled: true` to load; every other key
+# under a plugin is passed through to it as settings. Plugins live at
+# `tools/plugins/<name>/plugin.py`. Bundled:
+#   example — `repo_files` tool reporting what the indexer collected per repo
 plugins:
-  xmlspec:
+  example:
     enabled: false
-    spec_dir: repos/design-system/specs

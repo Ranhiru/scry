@@ -6,9 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A generic, multi-repo RAG (Retrieval-Augmented Generation) toolkit. Clones a set of repos listed in `workspace.yaml`, builds a hybrid keyword + vector index across their contents, and exposes search via a local MCP server / CLI / daemon.
 
-Project-specific extensions (like the XmlSpec XML toolkit) live under `tools/plugins/` and load only when enabled in `workspace.yaml`.
-
-See `ORBIT.md` for the example-org/Orbit-specific setup that this workspace was originally built for.
+Project-specific extensions live under `tools/plugins/` and load only when enabled in `workspace.yaml`. See `tools/plugins/example/` for the reference implementation.
 
 ## Common Commands
 
@@ -26,6 +24,7 @@ make build-vector-only    # skip BM25
 <cli-name> examples "query"          # search only type=impl repos
 <cli-name> get-chunk <chunk_id>
 <cli-name> status
+<cli-name> tool <tool_name> --args-json '{...}'   # call any registered tool, incl. plugins
 <cli-name> daemon status
 
 # Install the CLI symlink and register the MCP server with Claude/Codex
@@ -48,9 +47,8 @@ repos:
   - { name: docs-repo, type: spec }
   - { name: app-repo,  type: impl }
 plugins:
-  xmlspec:
+  example:
     enabled: false
-    spec_dir: repos/some-repo/specs
 ```
 
 - `type` is either `spec` (docs/design/API specs) or `impl` (real-world usage code). `examples_search` filters to `type=impl`.
@@ -73,9 +71,19 @@ plugins:
 - `docs_get_chunk(chunk_id)` — return full text + metadata for a hit.
 - `docs_status()` — index metadata and readiness.
 
-### Plugin: `xmlspec`
+Any tool the server registers, built-in or plugin-supplied, is reachable from the CLI:
 
-Optional. When enabled in `workspace.yaml`, registers `xmlspec_validate`, `xmlspec_lint`, `xmlspec_explain`, `xmlspec_explain_element` against the XmlSpec JSON Schema spec at `plugins.xmlspec.spec_dir`. See `ORBIT.md`.
+```bash
+<cli-name> tool <tool_name> --args-json '{"repo": "docs-repo"}'
+```
+
+### Plugins
+
+- **Location.** `tools/plugins/<name>/plugin.py`, exposing a `Plugin` class with `name: str` and `register(mcp, cfg)`.
+- **Enablement.** A plugin loads only when `plugins.<name>.enabled` is true in `workspace.yaml`; anything else under that key is passed through as plugin settings.
+- **Registration.** `register` receives the `FastMCP` instance and the `WorkspaceConfig`, so a plugin adds tools with `mcp.tool()(fn)` and reads workspace paths from `cfg`.
+
+`tools/plugins/example/` implements this contract and registers `repo_files(repo, limit)`, which reports what the indexer actually collected for a repo.
 
 ## Key Conventions
 
