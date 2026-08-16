@@ -4,3 +4,15 @@ tools/mcp_docs_server/.venv/
 __pycache__/
 *.pyc
 workspace.yaml
+
+MIGRATE-PLAN.md
+.claude/settings.local.json
+
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+.DS_Store
+.idea/
+.vscode/

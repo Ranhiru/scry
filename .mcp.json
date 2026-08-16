@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "workspace-docs": {
-      "command": "/Users/you/.local/bin/uv",
+      "command": "uv",
       "args": [
         "--directory",
         "tools/mcp_docs_server",
