@@ -81,7 +81,7 @@ def repo_and_rel(path: Path) -> Tuple[str, str]:
     """Return (repo_name, manifest_key) for a file under REPOS_DIR.
 
     The manifest key matches the chunk.path convention: it includes the repo
-    name as the first segment (e.g. ``orbit.docs/internal/foo.md``).
+    name as the first segment (e.g. ``docs-repo/internal/foo.md``).
     """
     rel = path.resolve().relative_to(REPOS_DIR)
     parts = rel.parts

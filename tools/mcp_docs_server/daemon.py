@@ -6,7 +6,7 @@ from app import create_mcp
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the Orbit docs MCP daemon over Streamable HTTP")
+    parser = argparse.ArgumentParser(description="Run the workspace docs MCP daemon over Streamable HTTP")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind")
     parser.add_argument("--path", default="/mcp", help="Streamable HTTP path")

@@ -37,8 +37,8 @@ make link
 A single file at the workspace root drives everything:
 
 ```yaml
-name: workspace-docs                  # CLI binary name, vector index name, MCP server name
-git_host: git@github.com:my-org       # default clone host (optional)
+name: scry                       # CLI binary name, vector index name, MCP server name
+git_host: git@github.com:my-org  # default clone host (optional)
 embeddings:
   api_url: http://localhost:1234/v1/embeddings
   model: text-embedding-nomic-embed-text-v1.5

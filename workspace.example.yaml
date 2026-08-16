@@ -5,7 +5,7 @@
 
 # CLI binary name (used for `make install-cli` symlink, vector index name,
 # MCP server name, and state directory).
-name: workspace-docs
+name: scry
 
 # Default git host. Entries under `repos:` without an explicit `url` will be
 # cloned from `${git_host}/<name>.git`. Comment out if you pre-clone repos

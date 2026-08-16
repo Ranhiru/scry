@@ -4,10 +4,10 @@ SERVER    := $(WORKSPACE)/tools/mcp_docs_server
 BIN_DIR   ?= $(HOME)/.local/bin
 
 # Derive the CLI name from workspace.yaml (top-level `name:`). Falls back to
-# `workspace-docs` if the config is missing or malformed.
+# `scry` if the config is missing or malformed.
 CLI_NAME := $(shell awk -F': *' '/^name:/ {gsub(/[ \t"]+/,"",$$2); print $$2; exit}' $(WORKSPACE)/workspace.yaml 2>/dev/null)
 ifeq ($(strip $(CLI_NAME)),)
-CLI_NAME := workspace-docs
+CLI_NAME := scry
 endif
 
 .PHONY: setup build build-keyword-only build-vector-only link check install-cli uninstall-cli test

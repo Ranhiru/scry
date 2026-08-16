@@ -1,11 +1,11 @@
 {
-  "enabledMcpjsonServers": ["workspace-docs"],
+  "enabledMcpjsonServers": ["scry"],
   "permissions": {
     "allow": [
-      "mcp__workspace-docs__docs_search",
-      "mcp__workspace-docs__examples_search",
-      "mcp__workspace-docs__docs_get_chunk",
-      "mcp__workspace-docs__docs_status"
+      "mcp__scry__docs_search",
+      "mcp__scry__examples_search",
+      "mcp__scry__docs_get_chunk",
+      "mcp__scry__docs_status"
     ]
   }
 }
