@@ -23,6 +23,7 @@ SOURCE_REPOS = [{"name": r.name, "type": r.type} for r in _CFG.repos]
 SOURCE_REPO_NAMES: list[str] = [r["name"] for r in SOURCE_REPOS]
 REPO_TYPE_MAP: dict[str, str] = {r["name"]: r["type"] for r in SOURCE_REPOS}
 WORKSPACE_NAME: str = _CFG.name
+CHUNKING = _CFG.chunking
 
 TEXT_EXTENSIONS = {
     ".md",
@@ -90,7 +91,6 @@ EXCLUDED_FILE_EXACT = {
 }
 
 MAX_FILE_BYTES = 512_000
-CHUNK_TARGET_CHARS = 1100
-CHUNK_OVERLAP_CHARS = 180
 SNIPPET_MAX_CHARS = 260
-INDEX_VERSION = "1.1.0"
+# 1.2.0: chunk spans derive from byte offsets, rotating every chunk_id.
+INDEX_VERSION = "1.2.0"

@@ -11,10 +11,13 @@ import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = WORKSPACE_ROOT / "workspace.yaml"
+
+CHUNK_STRATEGIES = {"text", "markdown", "code"}
+PROFILE_KEYS = {"strategy", "target_size", "hard_max_size", "overlap"}
 
 
 @dataclass
@@ -40,6 +43,42 @@ class PluginConfig:
     settings: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ChunkProfile:
+    strategy: str = "text"
+    target_size: int = 1100
+    hard_max_size: int = 2200
+    overlap: int = 0
+
+
+@dataclass(frozen=True)
+class ChunkingConfig:
+    default_profile: str
+    profiles: Dict[str, ChunkProfile]
+    by_extension: Dict[str, Tuple[str, Optional[str]]]
+
+    def resolve(self, suffix: str) -> Tuple[ChunkProfile, Optional[str]]:
+        name, language = self.by_extension.get(suffix, (self.default_profile, None))
+        return self.profiles[name], language
+
+
+DEFAULT_PROFILES = {
+    "code": ChunkProfile(strategy="code", target_size=1800, hard_max_size=3600),
+    "markdown": ChunkProfile(strategy="markdown", target_size=1400, hard_max_size=2800),
+    "text": ChunkProfile(strategy="text", target_size=1100, hard_max_size=2200, overlap=180),
+}
+
+DEFAULT_RULES = [
+    ([".md", ".mdx"], "markdown", None),
+    ([".py"], "code", "python"),
+    ([".ts"], "code", "typescript"),
+    ([".tsx"], "code", "tsx"),
+    ([".js", ".jsx"], "code", "javascript"),
+    ([".cs"], "code", "csharp"),
+    ([".sh"], "code", "bash"),
+]
+
+
 @dataclass
 class WorkspaceConfig:
     name: str
@@ -47,6 +86,7 @@ class WorkspaceConfig:
     embeddings: EmbeddingConfig
     repos: List[RepoEntry]
     plugins: Dict[str, PluginConfig]
+    chunking: ChunkingConfig = field(default_factory=lambda: _coerce_chunking(None))
     workspace_root: Path = WORKSPACE_ROOT
 
     def repo_names(self) -> List[str]:
@@ -119,6 +159,94 @@ def _coerce_embeddings(raw: Any) -> EmbeddingConfig:
     )
 
 
+def _coerce_profile(name: str, raw: Any, base: Optional[ChunkProfile]) -> ChunkProfile:
+    if not isinstance(raw, dict):
+        raise ValueError(f"chunking profile '{name}' must be a mapping")
+    unknown = set(raw) - PROFILE_KEYS
+    if unknown:
+        raise ValueError(f"chunking profile '{name}' has unknown keys: {sorted(unknown)}")
+
+    base = base or ChunkProfile()
+    strategy = str(raw.get("strategy", base.strategy))
+    if strategy not in CHUNK_STRATEGIES:
+        raise ValueError(f"chunking profile '{name}' has unknown strategy '{strategy}'")
+
+    target_size = int(raw.get("target_size", base.target_size))
+    overlap = int(raw.get("overlap", base.overlap))
+    if "hard_max_size" in raw:
+        hard_max_size = int(raw["hard_max_size"])
+    elif "target_size" in raw:
+        hard_max_size = 2 * target_size
+    else:
+        hard_max_size = base.hard_max_size
+
+    if target_size <= 0 or hard_max_size <= 0:
+        raise ValueError(f"chunking profile '{name}' sizes must be positive")
+    if hard_max_size < target_size:
+        raise ValueError(f"chunking profile '{name}' hard_max_size is below target_size")
+    if not 0 <= overlap < target_size:
+        raise ValueError(f"chunking profile '{name}' overlap must be >= 0 and < target_size")
+
+    return ChunkProfile(strategy, target_size, hard_max_size, overlap)
+
+
+def _coerce_rules(raw: Any, profiles: Dict[str, ChunkProfile]) -> Dict[str, Tuple[str, Optional[str]]]:
+    if not isinstance(raw, list):
+        raise ValueError("chunking.rules must be a list")
+
+    by_extension: Dict[str, Tuple[str, Optional[str]]] = {}
+    for rule in raw:
+        if not isinstance(rule, dict):
+            raise ValueError(f"Invalid chunking rule: {rule!r}")
+        name = str(rule.get("profile", ""))
+        if name not in profiles:
+            raise ValueError(f"chunking rule references unknown profile '{name}'")
+
+        language = rule.get("language")
+        is_code = profiles[name].strategy == "code"
+        if is_code and not language:
+            raise ValueError(f"chunking rule for profile '{name}' requires a 'language'")
+        if not is_code and language:
+            raise ValueError(f"chunking rule for profile '{name}' must not set 'language'")
+
+        extensions = rule.get("extensions")
+        if not isinstance(extensions, list) or not extensions:
+            raise ValueError(f"chunking rule for profile '{name}' needs a non-empty 'extensions' list")
+        for ext in extensions:
+            ext = str(ext).lower()
+            if ext in by_extension:
+                raise ValueError(f"chunking rule extension '{ext}' is defined twice")
+            by_extension[ext] = (name, str(language) if language else None)
+    return by_extension
+
+
+def _coerce_chunking(raw: Any) -> ChunkingConfig:
+    raw = raw or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"chunking must be a mapping, got {type(raw).__name__}")
+
+    profiles_raw = raw.get("profiles")
+    if profiles_raw is None:
+        profiles_raw = {}
+    if not isinstance(profiles_raw, dict):
+        raise ValueError("chunking.profiles must be a mapping")
+    profiles = dict(DEFAULT_PROFILES)
+    for name, body in profiles_raw.items():
+        name = str(name)
+        profiles[name] = _coerce_profile(name, body or {}, profiles.get(name))
+
+    default_profile = str(raw.get("default_profile", "text"))
+    if default_profile not in profiles:
+        raise ValueError(f"chunking.default_profile references unknown profile '{default_profile}'")
+
+    if raw.get("rules") is None:
+        by_extension = {ext: (name, lang) for exts, name, lang in DEFAULT_RULES for ext in exts}
+    else:
+        by_extension = _coerce_rules(raw["rules"], profiles)
+
+    return ChunkingConfig(default_profile, profiles, by_extension)
+
+
 @lru_cache(maxsize=1)
 def load_config(path: Optional[Path] = None) -> WorkspaceConfig:
     cfg_path = path or CONFIG_PATH
@@ -148,6 +276,7 @@ def load_config(path: Optional[Path] = None) -> WorkspaceConfig:
         embeddings=_coerce_embeddings(raw.get("embeddings")),
         repos=repos,
         plugins=_coerce_plugins(raw.get("plugins")),
+        chunking=_coerce_chunking(raw.get("chunking")),
     )
 
 
