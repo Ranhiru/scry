@@ -1,0 +1,11 @@
+{
+  "enabledMcpjsonServers": ["workspace-docs"],
+  "permissions": {
+    "allow": [
+      "mcp__workspace-docs__docs_search",
+      "mcp__workspace-docs__examples_search",
+      "mcp__workspace-docs__docs_get_chunk",
+      "mcp__workspace-docs__docs_status"
+    ]
+  }
+}

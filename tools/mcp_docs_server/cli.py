@@ -295,17 +295,26 @@ def command_exit_code(command: str, payload: str) -> int:
     if parsed is None:
         return 0
 
-    if parsed.get("error"):
+    if isinstance(parsed, dict) and parsed.get("error"):
         return 1
 
-    if command == "validate":
-        return 0 if parsed.get("valid") else 1
-
-    if command == "lint":
-        issues = parsed.get("issues") or []
-        return 1 if any(issue.get("severity") == "error" for issue in issues) else 0
-
     return 0
+
+
+def tool_arguments(args: argparse.Namespace) -> dict[str, Any]:
+    if args.args_json and args.args_file:
+        raise RuntimeError("Use either --args-json or --args-file, not both")
+
+    payload = args.args_json
+    if payload is None and args.args_file:
+        payload = _read_file_or_stdin(args.args_file)
+    if payload is None:
+        return {}
+
+    parsed = parse_json_payload(payload)
+    if not isinstance(parsed, dict):
+        raise RuntimeError("Tool arguments must be a JSON object")
+    return parsed
 
 
 def handle_tool_command(args: argparse.Namespace) -> int:
@@ -338,27 +347,9 @@ def handle_tool_command(args: argparse.Namespace) -> int:
     elif args.command == "status":
         tool_name = "docs_status"
         tool_args = {}
-    elif args.command == "validate":
-        tool_name = "xmlspec_validate"
-        tool_args = {"xml_text": _read_file_or_stdin(args.file)}
-    elif args.command == "lint":
-        tool_name = "xmlspec_lint"
-        tool_args = {
-            "xml_text": _read_file_or_stdin(args.file),
-            "rules": args.rules.split(",") if args.rules else None,
-        }
-    elif args.command == "explain":
-        tool_name = "xmlspec_explain"
-        tool_args = {
-            "xml_text": _read_file_or_stdin(args.file),
-            "verbose": args.verbose,
-        }
-    elif args.command == "explain-element":
-        tool_name = "xmlspec_explain_element"
-        tool_args = {
-            "element_name": args.name,
-            "verbose": args.verbose,
-        }
+    elif args.command == "tool":
+        tool_name = args.tool_name
+        tool_args = tool_arguments(args)
     else:
         raise RuntimeError(f"Unsupported command: {args.command}")
 
@@ -422,7 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Workspace docs CLI backed by a reusable local MCP daemon",
         epilog=(
             "Use `search` for docs, `examples` for implementation usage, `get-chunk` to expand a hit, "
-            "and `daemon status` to inspect the local server."
+            "`tool` to call a plugin-registered tool, and `daemon status` to inspect the local server."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -474,28 +465,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--json", action="store_true", help="Print raw JSON result")
     p_status.set_defaults(func=handle_tool_command)
 
-    p_validate = sub.add_parser("validate", help="Validate a XmlSpec XML file")
-    p_validate.add_argument("file", help="XML file path or - for stdin")
-    p_validate.add_argument("--json", action="store_true", help="Print raw JSON result")
-    p_validate.set_defaults(func=handle_tool_command)
-
-    p_lint = sub.add_parser("lint", help="Lint a XmlSpec XML file")
-    p_lint.add_argument("file", help="XML file path or - for stdin")
-    p_lint.add_argument("--rules", help="Comma-separated list of rules")
-    p_lint.add_argument("--json", action="store_true", help="Print raw JSON result")
-    p_lint.set_defaults(func=handle_tool_command)
-
-    p_explain = sub.add_parser("explain", help="Explain a XmlSpec XML fragment")
-    p_explain.add_argument("file", help="XML file path or - for stdin")
-    p_explain.add_argument("--verbose", action="store_true", help="Show all properties")
-    p_explain.add_argument("--json", action="store_true", help="Print raw output without formatting")
-    p_explain.set_defaults(func=handle_tool_command)
-
-    p_explain_element = sub.add_parser("explain-element", help="Explain an element type")
-    p_explain_element.add_argument("name", help="Element name")
-    p_explain_element.add_argument("--verbose", action="store_true", help="Show all properties")
-    p_explain_element.add_argument("--json", action="store_true", help="Print raw output without formatting")
-    p_explain_element.set_defaults(func=handle_tool_command)
+    p_tool = sub.add_parser(
+        "tool",
+        help="Call any MCP tool by name, including plugin-registered ones",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_tool.description = (
+        "Call any tool registered on the MCP server by name. Built-in tools have "
+        "dedicated subcommands; this is the escape hatch for plugin-registered tools."
+    )
+    p_tool.epilog = (
+        "Examples:\n"
+        f"  {APP_NAME} tool repo_files --args-json '{{\"repo\": \"docs-repo\"}}'\n"
+        f"  echo '{{\"repo\": \"docs-repo\"}}' | {APP_NAME} tool repo_files --args-file -"
+    )
+    p_tool.add_argument("tool_name", help="Registered MCP tool name")
+    p_tool.add_argument("--args-json", help="Tool arguments as a JSON object")
+    p_tool.add_argument("--args-file", help="Read JSON arguments from a file, or - for stdin")
+    p_tool.add_argument("--json", action="store_true", help="Print raw JSON result")
+    p_tool.set_defaults(func=handle_tool_command)
 
     p_daemon = sub.add_parser("daemon", help="Manage the local daemon")
     daemon_sub = p_daemon.add_subparsers(dest="daemon_command", required=True)
