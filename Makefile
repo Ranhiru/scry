@@ -10,7 +10,7 @@ ifeq ($(strip $(CLI_NAME)),)
 CLI_NAME := workspace-docs
 endif
 
-.PHONY: setup build build-keyword-only build-vector-only link check install-cli uninstall-cli
+.PHONY: setup build build-keyword-only build-vector-only link check install-cli uninstall-cli test
 
 check:
 	@ok=true; \
@@ -32,6 +32,9 @@ build-keyword-only:
 
 build-vector-only:
 	$(UV) --directory $(SERVER) run python $(WORKSPACE)/tools/dsl_indexer/index.py build --skip-keyword
+
+test:
+	cd $(WORKSPACE) && $(UV) run --project $(SERVER) --group dev python -m pytest -q
 
 install-cli:
 	@mkdir -p "$(BIN_DIR)"

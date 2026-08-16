@@ -164,7 +164,7 @@ class TestTokenizePath:
 
     def test_csharp_path(self):
         result = tokenize_path("Orbit.Search.Core.Test.Utils/ElementFinder.cs")
-        assert "retail" in result
+        assert "search" in result
         assert "orbit" in result
         assert "core" in result
         assert "test" in result
@@ -176,7 +176,7 @@ class TestTokenizePath:
 
     def test_dotnet_namespace_path(self):
         result = tokenize_path("orbit.search.core/src/Orbit.Search.Core.Test.Utils/ElementFinder.cs")
-        assert "retail" in result
+        assert "search" in result
         assert "orbit" in result
         assert "core" in result
         assert "src" in result
