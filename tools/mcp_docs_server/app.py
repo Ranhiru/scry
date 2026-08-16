@@ -10,7 +10,6 @@ from starlette.responses import JSONResponse
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from dsl_indexer.index import get_chunk, load_hits, load_vector_hits  # noqa: E402
 from dsl_indexer.storage import read_meta  # noqa: E402
-from plugin_registry import discover_plugins  # noqa: E402
 from workspace_config import load_config  # noqa: E402
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -109,15 +108,6 @@ def create_mcp(
     )
 
     _register_core_tools(mcp)
-
-    for plugin in discover_plugins(cfg):
-        try:
-            plugin.register(mcp, cfg)
-        except Exception as exc:
-            print(
-                f"[mcp_docs_server] plugin {plugin.name!r} failed to register: {exc}",
-                file=sys.stderr,
-            )
 
     if include_health:
 

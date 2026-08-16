@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A generic, multi-repo RAG (Retrieval-Augmented Generation) toolkit. Clones a set of repos listed in `workspace.yaml`, builds a hybrid keyword + vector index across their contents, and exposes search via a local MCP server / CLI / daemon.
 
-Project-specific extensions live under `tools/plugins/` and load only when enabled in `workspace.yaml`. See `tools/plugins/example/` for the reference implementation.
-
 ## Common Commands
 
 ```bash
@@ -24,7 +22,7 @@ make build-vector-only    # skip BM25
 <cli-name> examples "query"          # search only type=impl repos
 <cli-name> get-chunk <chunk_id>
 <cli-name> status
-<cli-name> tool <tool_name> --args-json '{...}'   # call any registered tool, incl. plugins
+<cli-name> tool <tool_name> --args-json '{...}'   # call any registered tool by name
 <cli-name> daemon status
 
 # Install the CLI symlink and register the MCP server with Claude/Codex
@@ -46,9 +44,6 @@ embeddings:
 repos:
   - { name: docs-repo, type: spec }
   - { name: app-repo,  type: impl }
-plugins:
-  example:
-    enabled: false
 ```
 
 - `type` is either `spec` (docs/design/API specs) or `impl` (real-world usage code). `examples_search` filters to `type=impl`.
@@ -60,9 +55,8 @@ plugins:
 ### Components
 
 - **`tools/dsl_indexer/`** — file collection, chunking (~1100 chars w/ overlap), BM25 (`keyword_index.py`), and HNSW vector index via `zvec` (`vector_index.py`). Embeddings are produced via an OpenAI-compatible `/v1/embeddings` endpoint (`embedding.py`) and cached by content hash in SQLite. Incremental rebuilds use a manifest diff.
-- **`tools/mcp_docs_server/`** — FastMCP server (`app.py`), Streamable HTTP daemon (`daemon.py`), and the CLI (`cli.py`). All three share `create_mcp()`, which loads `workspace.yaml`, registers the four built-in tools, then iterates enabled plugins.
+- **`tools/mcp_docs_server/`** — FastMCP server (`app.py`), Streamable HTTP daemon (`daemon.py`), and the CLI (`cli.py`). All three share `create_mcp()`, which loads `workspace.yaml` and registers the four built-in tools.
 - **`tools/workspace_config.py`** — single source of truth for config; exposes a typed dataclass via `load_config()`.
-- **`tools/plugin_registry.py`** — minimal discovery contract: each plugin lives at `tools/plugins/<name>/plugin.py` with a `Plugin` class exposing `name` and `register(mcp, cfg)`.
 
 ### Built-in MCP tools
 
@@ -71,19 +65,11 @@ plugins:
 - `docs_get_chunk(chunk_id)` — return full text + metadata for a hit.
 - `docs_status()` — index metadata and readiness.
 
-Any tool the server registers, built-in or plugin-supplied, is reachable from the CLI:
+Each has a dedicated CLI subcommand, and any registered tool is also callable by name with raw JSON arguments:
 
 ```bash
-<cli-name> tool <tool_name> --args-json '{"repo": "docs-repo"}'
+<cli-name> tool docs_search --args-json '{"query": "auth", "top_k": 3}'
 ```
-
-### Plugins
-
-- **Location.** `tools/plugins/<name>/plugin.py`, exposing a `Plugin` class with `name: str` and `register(mcp, cfg)`.
-- **Enablement.** A plugin loads only when `plugins.<name>.enabled` is true in `workspace.yaml`; anything else under that key is passed through as plugin settings.
-- **Registration.** `register` receives the `FastMCP` instance and the `WorkspaceConfig`, so a plugin adds tools with `mcp.tool()(fn)` and reads workspace paths from `cfg`.
-
-`tools/plugins/example/` implements this contract and registers `repo_files(repo, limit)`, which reports what the indexer actually collected for a repo.
 
 ## Key Conventions
 

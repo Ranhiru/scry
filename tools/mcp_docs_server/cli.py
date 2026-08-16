@@ -413,7 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Workspace docs CLI backed by a reusable local MCP daemon",
         epilog=(
             "Use `search` for docs, `examples` for implementation usage, `get-chunk` to expand a hit, "
-            "`tool` to call a plugin-registered tool, and `daemon status` to inspect the local server."
+            "`tool` to call any tool by name, and `daemon status` to inspect the local server."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -467,17 +467,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_tool = sub.add_parser(
         "tool",
-        help="Call any MCP tool by name, including plugin-registered ones",
+        help="Call any MCP tool by name",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_tool.description = (
-        "Call any tool registered on the MCP server by name. Built-in tools have "
-        "dedicated subcommands; this is the escape hatch for plugin-registered tools."
+        "Call any tool registered on the MCP server by name, passing raw JSON "
+        "arguments. The dedicated subcommands are friendlier; this is the escape "
+        "hatch for arguments they do not expose."
     )
     p_tool.epilog = (
         "Examples:\n"
-        f"  {APP_NAME} tool repo_files --args-json '{{\"repo\": \"docs-repo\"}}'\n"
-        f"  echo '{{\"repo\": \"docs-repo\"}}' | {APP_NAME} tool repo_files --args-file -"
+        f"  {APP_NAME} tool docs_search --args-json '{{\"query\": \"auth\", \"top_k\": 3}}'\n"
+        f"  echo '{{\"query\": \"auth\"}}' | {APP_NAME} tool docs_search --args-file -"
     )
     p_tool.add_argument("tool_name", help="Registered MCP tool name")
     p_tool.add_argument("--args-json", help="Tool arguments as a JSON object")

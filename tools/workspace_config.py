@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -35,18 +35,11 @@ class RepoEntry:
 
 
 @dataclass
-class PluginConfig:
-    enabled: bool = False
-    settings: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class WorkspaceConfig:
     name: str
     git_host: Optional[str]
     embeddings: EmbeddingConfig
     repos: List[RepoEntry]
-    plugins: Dict[str, PluginConfig]
     workspace_root: Path = WORKSPACE_ROOT
 
     def repo_names(self) -> List[str]:
@@ -61,9 +54,6 @@ class WorkspaceConfig:
         if self.git_host:
             return f"{self.git_host}/{repo.name}.git"
         return None
-
-    def plugin(self, name: str) -> Optional[PluginConfig]:
-        return self.plugins.get(name)
 
 
 def _require_yaml() -> Any:
@@ -89,22 +79,6 @@ def _coerce_repo(entry: Any) -> RepoEntry:
         url=entry.get("url"),
         branch=entry.get("branch"),
     )
-
-
-def _coerce_plugins(raw: Any) -> Dict[str, PluginConfig]:
-    if not raw:
-        return {}
-    if not isinstance(raw, dict):
-        raise ValueError(f"plugins must be a mapping, got {type(raw).__name__}")
-    out: Dict[str, PluginConfig] = {}
-    for name, settings in raw.items():
-        settings = settings or {}
-        if not isinstance(settings, dict):
-            raise ValueError(f"plugin '{name}' settings must be a mapping")
-        enabled = bool(settings.get("enabled", True))
-        rest = {k: v for k, v in settings.items() if k != "enabled"}
-        out[str(name)] = PluginConfig(enabled=enabled, settings=rest)
-    return out
 
 
 def _coerce_embeddings(raw: Any) -> EmbeddingConfig:
@@ -147,7 +121,6 @@ def load_config(path: Optional[Path] = None) -> WorkspaceConfig:
         git_host=raw.get("git_host"),
         embeddings=_coerce_embeddings(raw.get("embeddings")),
         repos=repos,
-        plugins=_coerce_plugins(raw.get("plugins")),
     )
 
 
